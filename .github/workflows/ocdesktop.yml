@@ -62,10 +62,20 @@ jobs:
           rm -rf ${{ runner.temp }}/.buildx-cache
           mv ${{ runner.temp }}/.buildx-cache{-new,}
 
+      - name: Add swap for large compilation units.
+        if: env.ONLY_CACHE == 'false'
+        run: |
+          sudo fallocate -l 8G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          echo "Swap enabled: $(swapon --show)"
+
       - name: OCDesktop build.
         if: env.ONLY_CACHE == 'false'
         run: |
           docker run --rm \
+          --memory=7g --memory-swap=14g \
           -u $(id -u) \
           -v $PWD:/usr/src/tdesktop \
           -e CONFIG=Release \
