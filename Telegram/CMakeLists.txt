@@ -1944,6 +1944,9 @@ PRIVATE
     window/themes/window_themes_generate_name.h
     apiwrap.cpp
     apiwrap.h
+    openclaw/GatewayInterface.h
+    openclaw/MockGateway.cpp
+    openclaw/MockGateway.h
     config.h
     logs.cpp
     logs.h
@@ -2004,6 +2007,7 @@ PRIVATE
     qrc/telegram/picker.qrc
     qrc/telegram/telegram.qrc
     qrc/telegram/sounds.qrc
+    qrc/openclaw.qrc
     winrc/Telegram.rc
     winrc/Telegram.manifest
     langs/lang.strings
