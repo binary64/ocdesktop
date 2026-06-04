@@ -62,6 +62,13 @@ public:
 	void forcedLogOut();
 	[[nodiscard]] bool loggingOut() const;
 
+	void setOfflineSession(bool offline) {
+		_offlineSession = offline;
+	}
+	[[nodiscard]] bool offlineSession() const {
+		return _offlineSession;
+	}
+
 	[[nodiscard]] AppConfig &appConfig() const {
 		Expects(_appConfig != nullptr);
 
@@ -164,6 +171,7 @@ private:
 	MTP::Instance::Fields _mtpFields;
 	MTP::AuthKeysList _mtpKeysToDestroy;
 	bool _loggingOut = false;
+	bool _offlineSession = false;
 
 	rpl::lifetime _lifetime;
 
