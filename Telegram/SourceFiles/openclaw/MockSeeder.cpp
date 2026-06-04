@@ -156,6 +156,12 @@ bool MockModeEnabled() {
 		|| (value.compare("yes", Qt::CaseInsensitive) == 0);
 }
 
+bool SeedingEnabled() {
+	const auto env = QProcessEnvironment::systemEnvironment();
+	return MockModeEnabled()
+		|| !env.value("OCDESKTOP_HERMES_URL").isEmpty();
+}
+
 template <typename Gateway>
 bool SeedFromGateway(not_null<Main::Account*> account, Gateway &gateway) {
 	auto settings = std::make_unique<Main::SessionSettings>();

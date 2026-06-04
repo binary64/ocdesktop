@@ -16,6 +16,7 @@ class Account;
 namespace OpenClaw {
 
 [[nodiscard]] bool MockModeEnabled();
+[[nodiscard]] bool SeedingEnabled();
 
 // Fabricates a self session on the given account (no real auth / MTP login)
 // and seeds it with the MockGateway fixtures translated into MTP TL objects,

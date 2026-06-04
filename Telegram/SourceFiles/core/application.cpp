@@ -487,9 +487,9 @@ void Application::startDomain() {
 		lockByPasscode();
 		DEBUG_LOG(("Application Info: passcode needed..."));
 	}
-	if (OpenClaw::MockModeEnabled() && _domain->started()) {
+	if (OpenClaw::SeedingEnabled() && _domain->started()) {
 		const auto seeded = OpenClaw::SeedMockSession(&_domain->active());
-		LOG(("OpenClaw: mock seed result = %1, sessionExists = %2"
+		LOG(("OpenClaw: seed result = %1, sessionExists = %2"
 			).arg(seeded ? "true" : "false"
 			).arg(_domain->active().sessionExists() ? "true" : "false"));
 		if (seeded) {

@@ -54,15 +54,19 @@ def _ensure_hermes_on_path() -> None:
 
 
 def session_id_to_peer_id(session_id: str) -> int:
-    """Stable uint64 peer id from a session id string.
+    """Stable peer id from a session id string.
 
-    Lower bit forced to 1 so it never collides with SELF_PEER_ID (1) and
-    never lands on 0 (which the client treats as 'no peer').
+    tdesktop's PeerId/UserId only accepts bare user ids within a limited
+    range (well under 2^48), so we mask the hash to 40 bits — ample space
+    for negligible collisions across a few hundred sessions while staying
+    inside the valid UserId range. Lower bit forced to 1 so it never
+    collides with SELF_PEER_ID (1) and never lands on 0.
     """
     digest = hashlib.blake2b(session_id.encode("utf-8"), digest_size=8).digest()
     val = int.from_bytes(digest, "big")
+    val &= (1 << 40) - 1
     val |= 1
-    if val == SELF_PEER_ID:
+    if val <= SELF_PEER_ID:
         val += 2
     return val
 
