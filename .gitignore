@@ -71,3 +71,6 @@ settings.local.json
 
 # Generated changelog page (built by CI, deployed to GitHub Pages)
 /docs/changelog/
+dist/OCDesktop-x86_64.AppImage
+squashfs-root/usr/share/ocdesktop/hermes.env
+squashfs-root/usr/bin/ocdesktop
