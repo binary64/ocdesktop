@@ -1,0 +1,152 @@
+name: AppImage (Hermes mock build).
+
+# Builds a self-contained Linux AppImage of OCDesktop running against the
+# in-memory MockGateway (no network, no Telegram login). GitHub-hosted runner.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/hermes-gateway
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+      - 'LEGAL'
+      - 'LICENSE'
+
+jobs:
+  appimage:
+    name: Rocky Linux 8 -> AppImage
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    env:
+      IMAGE_TAG: tdesktop:centos_env
+
+    steps:
+      - name: Clone.
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: First set up.
+        run: |
+          sudo apt update
+          curl -sSL https://install.python-poetry.org | python3 -
+          cd Telegram/build/docker/centos_env
+          poetry install
+          DOCKERFILE=$(DEBUG= LTO= poetry run gen_dockerfile)
+          echo "$DOCKERFILE" > Dockerfile
+          rm -rf __pycache__
+
+      - name: Free up some disk space.
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be
+        with:
+          tool-cache: true
+
+      - name: Set up Docker Buildx.
+        uses: docker/setup-buildx-action@v3
+
+      - name: Libraries cache.
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/.buildx-cache
+          key: ${{ runner.OS }}-libs-${{ hashFiles('Telegram/build/docker/centos_env/**') }}
+          restore-keys: ${{ runner.OS }}-libs-
+
+      - name: Build libraries image.
+        uses: docker/build-push-action@v6
+        with:
+          context: Telegram/build/docker/centos_env
+          load: true
+          tags: ${{ env.IMAGE_TAG }}
+          cache-from: type=local,src=${{ runner.temp }}/.buildx-cache
+          cache-to: type=local,dest=${{ runner.temp }}/.buildx-cache-new,mode=max
+
+      - name: Move cache.
+        run: |
+          rm -rf ${{ runner.temp }}/.buildx-cache
+          mv ${{ runner.temp }}/.buildx-cache{-new,}
+
+      - name: Telegram Desktop build.
+        run: |
+          docker run --rm \
+            -u $(id -u) \
+            -v $PWD:/usr/src/tdesktop \
+            -e CONFIG=Release \
+            $IMAGE_TAG \
+            /usr/src/tdesktop/Telegram/build/docker/centos_env/build.sh \
+            -D CMAKE_CONFIGURATION_TYPES=Release \
+            -D TDESKTOP_API_TEST=ON \
+            -D DESKTOP_APP_DISABLE_AUTOUPDATE=ON \
+            -D DESKTOP_APP_DISABLE_CRASH_REPORTS=ON
+
+      - name: Check build output.
+        run: |
+          bin="out/Release/Telegram"
+          if [ ! -f "$bin" ]; then
+            echo "Build failed: $bin missing"; exit 1
+          fi
+          echo "Built $(stat -c %s "$bin") bytes"
+
+      - name: Package AppImage.
+        run: |
+          set -e
+          APPDIR=OCDesktop.AppDir
+          mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/share/applications" "$APPDIR/usr/share/icons/hicolor/256x256/apps"
+          cp out/Release/Telegram "$APPDIR/usr/bin/OCDesktop"
+          # Icon (reuse tdesktop's 256px icon if present, else a blank).
+          ICON_SRC=$(find Telegram/Resources/art -name 'icon256*.png' | head -1 || true)
+          if [ -n "$ICON_SRC" ]; then cp "$ICON_SRC" "$APPDIR/usr/share/icons/hicolor/256x256/apps/ocdesktop.png"; fi
+          cp "$APPDIR/usr/share/icons/hicolor/256x256/apps/ocdesktop.png" "$APPDIR/ocdesktop.png" 2>/dev/null || touch "$APPDIR/ocdesktop.png"
+
+          cat > "$APPDIR/ocdesktop.desktop" <<EOF
+          [Desktop Entry]
+          Type=Application
+          Name=OCDesktop (Hermes mock)
+          Exec=OCDesktop
+          Icon=ocdesktop
+          Categories=Network;
+          Terminal=false
+          EOF
+          cp "$APPDIR/ocdesktop.desktop" "$APPDIR/usr/share/applications/"
+
+          cat > "$APPDIR/AppRun" <<'EOF'
+          #!/bin/bash
+          HERE="$(dirname "$(readlink -f "${0}")")"
+          export PATH="$HERE/usr/bin:$PATH"
+          # Force the mocked experience regardless of any user config.
+          export OCDESKTOP_MOCK=1
+          exec "$HERE/usr/bin/OCDesktop" "$@"
+          EOF
+          chmod +x "$APPDIR/AppRun"
+
+          # Bundle dependencies + build the .AppImage via linuxdeploy.
+          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+          chmod +x linuxdeploy*.AppImage
+          export QML_SOURCES_PATHS=""
+          export OUTPUT=OCDesktop-x86_64.AppImage
+          ./linuxdeploy-x86_64.AppImage --appimage-extract-and-run \
+            --appdir "$APPDIR" \
+            --plugin qt \
+            --output appimage || {
+              echo "linuxdeploy-qt failed; falling back to plain linuxdeploy (may miss Qt plugins)";
+              ./linuxdeploy-x86_64.AppImage --appimage-extract-and-run --appdir "$APPDIR" --output appimage;
+            }
+          ls -la *.AppImage
+
+      - name: Upload AppImage.
+        uses: actions/upload-artifact@v4
+        with:
+          name: OCDesktop-AppImage
+          path: "*.AppImage"
+          if-no-files-found: error
+
+      - name: Upload raw binary (fallback).
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OCDesktop-binary
+          path: out/Release/Telegram
+          if-no-files-found: ignore
