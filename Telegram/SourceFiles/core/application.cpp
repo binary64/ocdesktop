@@ -57,6 +57,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "main/main_account.h"
 #include "main/main_domain.h"
 #include "main/main_session.h"
+#include "openclaw/MockSeeder.h"
 #include "media/view/media_view_overlay_widget.h"
 #include "media/view/media_view_open_common.h"
 #include "mtproto/mtproto_dc_options.h"
@@ -485,6 +486,20 @@ void Application::startDomain() {
 	if (state != Storage::StartResult::Success) {
 		lockByPasscode();
 		DEBUG_LOG(("Application Info: passcode needed..."));
+	}
+	if (OpenClaw::MockModeEnabled() && _domain->started()) {
+		const auto seeded = OpenClaw::SeedMockSession(&_domain->active());
+		LOG(("OpenClaw: mock seed result = %1, sessionExists = %2"
+			).arg(seeded ? "true" : "false"
+			).arg(_domain->active().sessionExists() ? "true" : "false"));
+		if (seeded) {
+			InvokeQueued(this, [=] {
+				if (_lastActivePrimaryWindow && _domain->started()) {
+					LOG(("OpenClaw: re-showing account post-firstShow."));
+					_lastActivePrimaryWindow->showAccount(&_domain->active());
+				}
+			});
+		}
 	}
 }
 

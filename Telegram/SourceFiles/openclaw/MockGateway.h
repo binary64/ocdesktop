@@ -112,6 +112,17 @@ public:
 		GatewayCallback<std::vector<GatewayMessage>> done,
 		ErrorCallback fail) override;
 
+	// --- Fixture access (for MockSeeder) ---
+	[[nodiscard]] const std::vector<GatewayDialog> &dialogs() const {
+		return _dialogs;
+	}
+	[[nodiscard]] const std::unordered_map<PeerId, GatewayPeer> &peers() const {
+		return _peers;
+	}
+	[[nodiscard]] const std::unordered_map<PeerId, std::vector<GatewayMessage>> &history() const {
+		return _history;
+	}
+
 private:
 	void seedFixtures();
 
