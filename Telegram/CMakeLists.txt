@@ -1947,6 +1947,8 @@ PRIVATE
     openclaw/GatewayInterface.h
     openclaw/MockGateway.cpp
     openclaw/MockGateway.h
+    openclaw/MockSeeder.cpp
+    openclaw/MockSeeder.h
     config.h
     logs.cpp
     logs.h
