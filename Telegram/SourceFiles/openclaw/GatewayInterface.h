@@ -19,9 +19,9 @@ namespace OpenClaw {
 // Forward declarations for types shared with the UI layer.
 // These mirror tdesktop's data model types so the UI doesn't need
 // to change — only the gateway implementation behind this interface.
-using PeerId = uint64;
-using MsgId = int64;
-using TimeId = int32;
+using PeerId = std::uint64_t;
+using MsgId = std::int64_t;
+using TimeId = std::int32_t;
 
 // Minimal message representation for the gateway boundary.
 struct GatewayMessage {
