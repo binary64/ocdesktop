@@ -463,8 +463,8 @@ void Credits::setupSwipeBack() {
 		}
 	};
 
-	auto init = [=](int, Qt::LayoutDirection direction) {
-		return (direction == Qt::RightToLeft)
+	auto init = [=](Ui::Controls::SwipeHandlerInitData data) {
+		return (data.direction == Qt::RightToLeft)
 			? DefaultSwipeBackHandlerFinishData([=] {
 				_showBack.fire({});
 			})
@@ -534,7 +534,6 @@ void Credits::setupContent() {
 						lt_emoji,
 						rpl::single(Ui::Text::SingleCustomEmoji(u"+"_q)),
 						tr::marked)));
-		button->setTextTransform(Ui::RoundButton::TextTransform::NoTransform);
 		const auto show = controller()->uiShow();
 		if (isCurrency) {
 			const auto url = tr::lng_suggest_low_ton_fragment_url(tr::now);
@@ -869,6 +868,7 @@ void BuildCurrencyWithdrawalSection(
 				stButton),
 			st::boxRowPadding,
 			style::al_top);
+		button->setTextTransform(Ui::RoundButtonTextTransform::ToUpper);
 
 		const auto label = Ui::CreateChild<Ui::FlatLabel>(
 			button,
