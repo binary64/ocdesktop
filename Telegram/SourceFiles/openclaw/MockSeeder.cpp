@@ -178,6 +178,7 @@ bool SeedFromGateway(not_null<Main::Account*> account, Gateway &gateway) {
 		return self;
 	}();
 
+	account->setOfflineSession(true);
 	account->createSession(MakeUser(selfPeer, true), std::move(settings));
 
 	if (!account->sessionExists()) {
