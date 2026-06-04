@@ -12,6 +12,7 @@ https://github.com/binary64/ocdesktop/blob/main/LICENSE
 #include "main/main_account.h"
 #include "main/main_session.h"
 #include "main/main_session_settings.h"
+#include "base/weak_ptr.h"
 #include "data/data_session.h"
 #include "data/data_user.h"
 #include "data/data_peer_id.h"
@@ -21,9 +22,12 @@ https://github.com/binary64/ocdesktop/blob/main/LICENSE
 
 #include <QProcessEnvironment>
 #include <QFile>
+#include <memory>
 
 namespace OpenClaw {
 namespace {
+
+std::unique_ptr<WsGateway> LiveGateway;
 
 constexpr auto kSelfBareId = uint64(1);
 
@@ -162,6 +166,10 @@ bool SeedingEnabled() {
 		|| !env.value("OCDESKTOP_HERMES_URL").isEmpty();
 }
 
+GatewayInterface *ActiveGateway() {
+	return LiveGateway.get();
+}
+
 template <typename Gateway>
 bool SeedFromGateway(not_null<Main::Account*> account, Gateway &gateway) {
 	auto settings = std::make_unique<Main::SessionSettings>();
@@ -242,12 +250,34 @@ bool SeedMockSession(not_null<Main::Account*> account) {
 				}
 			}
 		}
-		WsGateway gateway(hermesUrl, token);
-		if (!gateway.bootstrapBlocking()) {
+		LiveGateway = std::make_unique<WsGateway>(hermesUrl, token);
+		if (!LiveGateway->bootstrapBlocking()) {
 			LOG(("OpenClaw seeder: WS bootstrap failed for %1").arg(hermesUrl));
+			LiveGateway = nullptr;
 			return false;
 		}
-		return SeedFromGateway(account, gateway);
+		if (!SeedFromGateway(account, *LiveGateway)) {
+			LiveGateway = nullptr;
+			return false;
+		}
+
+		const auto weakSession = base::make_weak(&account->session());
+		LiveGateway->setUpdateHandler([weakSession](const GatewayMessage &msg) {
+			crl::on_main([weakSession, msg] {
+				const auto session = weakSession.get();
+				if (!session) {
+					return;
+				}
+				if (msg.fromId == kSelfBareId) {
+					return;
+				}
+				session->data().addNewMessage(
+					MakeMessage(msg),
+					MessageFlags(),
+					NewMessageType::Unread);
+			});
+		});
+		return true;
 	}
 
 	if (!MockModeEnabled()) {
