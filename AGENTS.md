@@ -1,4 +1,4 @@
-﻿# Agent Guide for Telegram Desktop
+# Agent Guide for Telegram Desktop
 
 This guide defines repository-wide instructions for coding agents working with the Telegram Desktop codebase.
 
