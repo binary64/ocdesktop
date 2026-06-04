@@ -15,8 +15,15 @@ class Account;
 
 namespace OpenClaw {
 
+class GatewayInterface;
+
 [[nodiscard]] bool MockModeEnabled();
 [[nodiscard]] bool SeedingEnabled();
+
+// Returns the persistent live gateway created during seeding, or nullptr
+// when no offline/Hermes session is active. The send path uses this to
+// route outgoing text to the WS bridge.
+[[nodiscard]] GatewayInterface *ActiveGateway();
 
 // Fabricates a self session on the given account (no real auth / MTP login)
 // and seeds it with the MockGateway fixtures translated into MTP TL objects,
