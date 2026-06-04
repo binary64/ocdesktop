@@ -8,6 +8,7 @@ https://github.com/binary64/ocdesktop/blob/main/LICENSE
 #include "openclaw/MockSeeder.h"
 
 #include "openclaw/MockGateway.h"
+#include "openclaw/WsGateway.h"
 #include "main/main_account.h"
 #include "main/main_session.h"
 #include "main/main_session_settings.h"
@@ -19,6 +20,7 @@ https://github.com/binary64/ocdesktop/blob/main/LICENSE
 #include "logs.h"
 
 #include <QProcessEnvironment>
+#include <QFile>
 
 namespace OpenClaw {
 namespace {
@@ -154,16 +156,8 @@ bool MockModeEnabled() {
 		|| (value.compare("yes", Qt::CaseInsensitive) == 0);
 }
 
-bool SeedMockSession(not_null<Main::Account*> account) {
-	if (!MockModeEnabled()) {
-		return false;
-	}
-	if (account->sessionExists()) {
-		return false;
-	}
-
-	MockGateway gateway;
-
+template <typename Gateway>
+bool SeedFromGateway(not_null<Main::Account*> account, Gateway &gateway) {
 	auto settings = std::make_unique<Main::SessionSettings>();
 	const auto selfPeer = [&]() -> GatewayPeer {
 		const auto &peers = gateway.peers();
@@ -213,10 +207,47 @@ bool SeedMockSession(not_null<Main::Account*> account) {
 
 	data.applyDialogs(nullptr, messages, dialogs);
 
-	LOG(("OpenClaw MockSeeder: injected %1 users, %2 dialogs, %3 messages."
+	LOG(("OpenClaw seeder: injected %1 users, %2 dialogs, %3 messages."
 		).arg(users.size()).arg(dialogs.size()).arg(messages.size()));
 
 	return true;
+}
+
+bool SeedMockSession(not_null<Main::Account*> account) {
+	if (account->sessionExists()) {
+		return false;
+	}
+
+	const auto env = QProcessEnvironment::systemEnvironment();
+	const auto hermesUrl = env.value("OCDESKTOP_HERMES_URL");
+	if (!hermesUrl.isEmpty()) {
+		auto token = env.value("OCDESKTOP_HERMES_TOKEN");
+		if (token.isEmpty()) {
+			const auto envFile = env.value("OCDESKTOP_HERMES_ENV");
+			if (!envFile.isEmpty()) {
+				QFile f(envFile);
+				if (f.open(QIODevice::ReadOnly)) {
+					for (const auto &line : QString::fromUtf8(f.readAll()).split('\n')) {
+						if (line.startsWith("OCDESKTOP_WS_TOKEN=")) {
+							token = line.mid(QString("OCDESKTOP_WS_TOKEN=").size()).trimmed();
+						}
+					}
+				}
+			}
+		}
+		WsGateway gateway(hermesUrl, token);
+		if (!gateway.bootstrapBlocking()) {
+			LOG(("OpenClaw seeder: WS bootstrap failed for %1").arg(hermesUrl));
+			return false;
+		}
+		return SeedFromGateway(account, gateway);
+	}
+
+	if (!MockModeEnabled()) {
+		return false;
+	}
+	MockGateway gateway;
+	return SeedFromGateway(account, gateway);
 }
 
 } // namespace OpenClaw

@@ -1949,6 +1949,10 @@ PRIVATE
     openclaw/MockGateway.h
     openclaw/MockSeeder.cpp
     openclaw/MockSeeder.h
+    openclaw/WsClient.cpp
+    openclaw/WsClient.h
+    openclaw/WsGateway.cpp
+    openclaw/WsGateway.h
     config.h
     logs.cpp
     logs.h
