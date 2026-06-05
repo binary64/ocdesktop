@@ -52,7 +52,9 @@ constexpr auto kSelfBareId = uint64(1);
 	}
 	if (peer.isBot) {
 		flags |= Flag::f_bot;
+		flags |= Flag::f_bot_info_version;
 	}
+	const auto botInfoVersion = peer.isBot ? MTP_int(1) : MTPint();
 	return MTP_user(
 		MTP_flags(flags),
 		MTP_long(peer.id),
@@ -63,7 +65,7 @@ constexpr auto kSelfBareId = uint64(1);
 		MTPstring(), // phone
 		MTPUserProfilePhoto(),
 		MTPUserStatus(),
-		MTPint(), // bot_info_version
+		botInfoVersion, // bot_info_version
 		MTPVector<MTPRestrictionReason>(),
 		MTPstring(), // bot_inline_placeholder
 		MTPstring(), // lang_code
