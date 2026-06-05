@@ -1,0 +1,87 @@
+name: Build deps image (centos_env -> GHCR).
+
+# Builds the heavy OCDesktop build-deps image (Qt 6.11 + OpenSSL + FFmpeg +
+# all third-party libraries compiled from scratch) ONCE and pushes it to
+# GHCR as ghcr.io/<owner>/ocdesktop-deps. This is the ~2.5-3h part of the
+# build. The AppImage workflow consumes this prebuilt image and only compiles
+# the app layer, so it fits comfortably inside its own time budget.
+#
+# Triggers only when the centos_env build environment changes (or manually).
+# Because it is decoupled from the app build, it gets its own per-job budget
+# (GitHub's hard per-job cap is 6h) and can never be cancelled mid-way by the
+# app build's tighter 3h limit.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/hermes-gateway
+      - main
+    paths:
+      - 'Telegram/build/docker/centos_env/**'
+      - '.github/workflows/build-deps.yml'
+
+concurrency:
+  group: ocdesktop-deps-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  deps:
+    name: Compile deps -> GHCR
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+
+    env:
+      # GHCR repo names must be lowercase.
+      DEPS_IMAGE: ghcr.io/${{ github.repository_owner }}/ocdesktop-deps
+
+    steps:
+      - name: Clone.
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Free up some disk space.
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be
+        with:
+          tool-cache: true
+
+      - name: Generate Dockerfile.
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+          cd Telegram/build/docker/centos_env
+          poetry install
+          DOCKERFILE=$(DEBUG= LTO= poetry run gen_dockerfile)
+          echo "$DOCKERFILE" > Dockerfile
+          rm -rf __pycache__
+
+      - name: Lowercase image name.
+        id: img
+        run: echo "ref=$(echo "$DEPS_IMAGE" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx.
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR.
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push deps image.
+        uses: docker/build-push-action@v6
+        with:
+          context: Telegram/build/docker/centos_env
+          push: true
+          tags: |
+            ${{ steps.img.outputs.ref }}:latest
+            ${{ steps.img.outputs.ref }}:${{ github.sha }}
+          # Registry-backed layer cache: incremental dep bumps reuse unchanged
+          # layers instead of recompiling Qt/FFmpeg from zero.
+          cache-from: type=registry,ref=${{ steps.img.outputs.ref }}:buildcache
+          cache-to: type=registry,ref=${{ steps.img.outputs.ref }}:buildcache,mode=max
