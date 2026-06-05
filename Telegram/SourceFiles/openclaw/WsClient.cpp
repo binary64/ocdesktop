@@ -7,7 +7,10 @@ https://github.com/binary64/ocdesktop/blob/main/LICENSE
 */
 #include "openclaw/WsClient.h"
 
-#include <QTcpSocket>
+#include <QSslSocket>
+#include <QSslError>
+#include <QList>
+#include <QStringList>
 #include <QCryptographicHash>
 #include <QUrl>
 #include <QRandomGenerator>
@@ -37,18 +40,31 @@ void WsClient::open(const QString &url) {
 	const auto parsed = QUrl(url);
 	_host = parsed.host();
 	_path = parsed.path().isEmpty() ? QStringLiteral("/") : parsed.path();
-	_port = parsed.port(80);
+	_secure = (parsed.scheme().compare(QStringLiteral("wss"), Qt::CaseInsensitive) == 0);
+	_port = parsed.port(_secure ? 443 : 80);
 
-	_socket = new QTcpSocket(this);
-	connect(_socket, &QTcpSocket::connected, this, &WsClient::onConnected);
-	connect(_socket, &QTcpSocket::readyRead, this, &WsClient::onReadyRead);
-	connect(_socket, &QTcpSocket::disconnected, this, &WsClient::onDisconnected);
+	_socket = new QSslSocket(this);
+	connect(_socket, &QSslSocket::readyRead, this, &WsClient::onReadyRead);
+	connect(_socket, &QSslSocket::disconnected, this, &WsClient::onDisconnected);
 	connect(_socket, &QAbstractSocket::errorOccurred, this, [=](QAbstractSocket::SocketError) {
 		fail(_socket->errorString());
 	});
+	connect(_socket, &QSslSocket::sslErrors, this, [=](const QList<QSslError> &errors) {
+		QStringList parts;
+		for (const auto &e : errors) {
+			parts.push_back(e.errorString());
+		}
+		fail(QStringLiteral("TLS: ") + parts.join(QStringLiteral("; ")));
+	});
 
 	_state = State::Connecting;
-	_socket->connectToHost(_host, _port);
+	if (_secure) {
+		connect(_socket, &QSslSocket::encrypted, this, &WsClient::onConnected);
+		_socket->connectToHostEncrypted(_host, _port);
+	} else {
+		connect(_socket, &QSslSocket::connected, this, &WsClient::onConnected);
+		_socket->connectToHost(_host, _port);
+	}
 }
 
 void WsClient::onConnected() {
@@ -64,8 +80,12 @@ void WsClient::onConnected() {
 	_expectedAccept = accept.toBase64();
 
 	QByteArray req;
+	const bool defaultPort = (_secure && _port == 443) || (!_secure && _port == 80);
+	const auto hostHeader = defaultPort
+		? _host.toUtf8()
+		: _host.toUtf8() + ":" + QByteArray::number(_port);
 	req += "GET " + _path.toUtf8() + " HTTP/1.1\r\n";
-	req += "Host: " + _host.toUtf8() + ":" + QByteArray::number(_port) + "\r\n";
+	req += "Host: " + hostHeader + "\r\n";
 	req += "Upgrade: websocket\r\n";
 	req += "Connection: Upgrade\r\n";
 	req += "Sec-WebSocket-Key: " + key + "\r\n";

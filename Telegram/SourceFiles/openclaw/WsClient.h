@@ -12,17 +12,22 @@ https://github.com/binary64/ocdesktop/blob/main/LICENSE
 #include <QString>
 #include <functional>
 
-class QTcpSocket;
+class QSslSocket;
 
 namespace OpenClaw {
 
 // ============================================================
 // WsClient — a minimal RFC 6455 WebSocket text client built on
-// QTcpSocket. tdesktop's static Qt build does NOT ship the
+// QSslSocket. tdesktop's static Qt build does NOT ship the
 // QtWebSockets module, so we implement just the slice we need:
-//   - client handshake (ws:// only; Tailscale is the trust layer)
+//   - client handshake for ws:// (plain) and wss:// (TLS)
 //   - masked text frames out, unmasked text frames in
 //   - close + ping/pong
+//
+// QtNetwork's OpenSSL TLS backend IS linked in (MTProto needs
+// OpenSSL), so QSslSocket gives us real wss:// with full chain
+// validation — used for Tailscale's Let's Encrypt cert. For
+// ws:// the same socket runs in unencrypted mode.
 //
 // Binary frames, fragmentation beyond simple continuation, and
 // permessage-deflate are intentionally unsupported — the bridge
@@ -55,7 +60,8 @@ private:
 	void sendFrame(quint8 opcode, const QByteArray &payload);
 	void fail(const QString &reason);
 
-	QTcpSocket *_socket = nullptr;
+	QSslSocket *_socket = nullptr;
+	bool _secure = false;
 	State _state = State::Idle;
 	QString _host;
 	QString _path;
