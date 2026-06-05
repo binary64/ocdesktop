@@ -50,11 +50,12 @@ constexpr auto kSelfBareId = uint64(1);
 	} else {
 		flags |= Flag::f_contact;
 	}
-	if (peer.isBot) {
-		flags |= Flag::f_bot;
-		flags |= Flag::f_bot_info_version;
-	}
-	const auto botInfoVersion = peer.isBot ? MTP_int(1) : MTPint();
+	// Hermes bridge peers are rendered as normal conversations, never bots.
+	// Telegram shows a big "Start" button (instead of the message composer)
+	// whenever a bot chat has empty history -- which is wrong for a bridge,
+	// where every peer should be directly typeable. So we deliberately do NOT
+	// set f_bot here, even if the gateway marks the peer as a bot.
+	const auto botInfoVersion = MTPint();
 	return MTP_user(
 		MTP_flags(flags),
 		MTP_long(peer.id),
