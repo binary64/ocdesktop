@@ -1945,6 +1945,10 @@ PRIVATE
     apiwrap.cpp
     apiwrap.h
     openclaw/GatewayInterface.h
+    openclaw/ConnectBox.cpp
+    openclaw/ConnectBox.h
+    openclaw/ConnectConfig.cpp
+    openclaw/ConnectConfig.h
     openclaw/MockGateway.cpp
     openclaw/MockGateway.h
     openclaw/MockSeeder.cpp
