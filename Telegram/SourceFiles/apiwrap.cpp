@@ -4354,6 +4354,15 @@ void ApiWrap::sendBotStart(
 		const QString &startTokenForChat) {
 	Expects(bot->isBot());
 
+	if (_session->account().offlineSession()) {
+		const auto target = chat ? chat : bot.get();
+		auto message = MessageToSend(
+			Api::SendAction(_session->data().history(target)));
+		message.textWithTags = { u"/start"_q, TextWithTags::Tags() };
+		sendMessage(std::move(message));
+		return;
+	}
+
 	if (chat && chat->isChannel() && !chat->isMegagroup()) {
 		ShowAddParticipantsError(show, "USER_BOT", chat, bot);
 		return;
