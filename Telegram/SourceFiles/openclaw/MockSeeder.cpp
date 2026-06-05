@@ -9,6 +9,11 @@ https://github.com/binary64/ocdesktop/blob/main/LICENSE
 
 #include "openclaw/MockGateway.h"
 #include "openclaw/WsGateway.h"
+#include "openclaw/ConnectConfig.h"
+#include "openclaw/ConnectBox.h"
+#include "core/application.h"
+#include "window/window_controller.h"
+#include "ui/layers/generic_box.h"
 #include "main/main_account.h"
 #include "main/main_session.h"
 #include "main/main_session_settings.h"
@@ -161,9 +166,7 @@ bool MockModeEnabled() {
 }
 
 bool SeedingEnabled() {
-	const auto env = QProcessEnvironment::systemEnvironment();
-	return MockModeEnabled()
-		|| !env.value("OCDESKTOP_HERMES_URL").isEmpty();
+	return true;
 }
 
 GatewayInterface *ActiveGateway() {
@@ -228,56 +231,60 @@ bool SeedFromGateway(not_null<Main::Account*> account, Gateway &gateway) {
 	return true;
 }
 
+// Core: given a resolved config, create the live session by bootstrapping the
+// WS gateway. Returns true only when bootstrap + seed both succeed. On any
+// failure the LiveGateway is torn down and false is returned so the caller can
+// fall back to the ConnectBox.
+static bool SeedWithConfig(
+		not_null<Main::Account*> account,
+		const ConnectConfig &config) {
+	if (account->sessionExists()) {
+		return false;
+	}
+	if (config.url.isEmpty()) {
+		return false;
+	}
+
+	LiveGateway = std::make_unique<WsGateway>(config.url, config.token);
+	if (!LiveGateway->bootstrapBlocking()) {
+		LOG(("OpenClaw seeder: WS bootstrap failed for %1").arg(config.url));
+		LiveGateway = nullptr;
+		return false;
+	}
+	if (!SeedFromGateway(account, *LiveGateway)) {
+		LiveGateway = nullptr;
+		return false;
+	}
+
+	const auto weakSession = base::make_weak(&account->session());
+	LiveGateway->setUpdateHandler([weakSession](const GatewayMessage &msg) {
+		crl::on_main([weakSession, msg] {
+			const auto session = weakSession.get();
+			if (!session) {
+				return;
+			}
+			if (msg.fromId == kSelfBareId) {
+				return;
+			}
+			session->data().addNewMessage(
+				MakeMessage(msg),
+				MessageFlags(),
+				NewMessageType::Unread);
+		});
+	});
+	return true;
+}
+
 bool SeedMockSession(not_null<Main::Account*> account) {
 	if (account->sessionExists()) {
 		return false;
 	}
 
-	const auto env = QProcessEnvironment::systemEnvironment();
-	const auto hermesUrl = env.value("OCDESKTOP_HERMES_URL");
-	if (!hermesUrl.isEmpty()) {
-		auto token = env.value("OCDESKTOP_HERMES_TOKEN");
-		if (token.isEmpty()) {
-			const auto envFile = env.value("OCDESKTOP_HERMES_ENV");
-			if (!envFile.isEmpty()) {
-				QFile f(envFile);
-				if (f.open(QIODevice::ReadOnly)) {
-					for (const auto &line : QString::fromUtf8(f.readAll()).split('\n')) {
-						if (line.startsWith("OCDESKTOP_WS_TOKEN=")) {
-							token = line.mid(QString("OCDESKTOP_WS_TOKEN=").size()).trimmed();
-						}
-					}
-				}
-			}
+	const auto config = ResolveConnectConfig();
+	if (config.valid()) {
+		if (SeedWithConfig(account, config)) {
+			return true;
 		}
-		LiveGateway = std::make_unique<WsGateway>(hermesUrl, token);
-		if (!LiveGateway->bootstrapBlocking()) {
-			LOG(("OpenClaw seeder: WS bootstrap failed for %1").arg(hermesUrl));
-			LiveGateway = nullptr;
-			return false;
-		}
-		if (!SeedFromGateway(account, *LiveGateway)) {
-			LiveGateway = nullptr;
-			return false;
-		}
-
-		const auto weakSession = base::make_weak(&account->session());
-		LiveGateway->setUpdateHandler([weakSession](const GatewayMessage &msg) {
-			crl::on_main([weakSession, msg] {
-				const auto session = weakSession.get();
-				if (!session) {
-					return;
-				}
-				if (msg.fromId == kSelfBareId) {
-					return;
-				}
-				session->data().addNewMessage(
-					MakeMessage(msg),
-					MessageFlags(),
-					NewMessageType::Unread);
-			});
-		});
-		return true;
 	}
 
 	if (!MockModeEnabled()) {
@@ -285,6 +292,114 @@ bool SeedMockSession(not_null<Main::Account*> account) {
 	}
 	MockGateway gateway;
 	return SeedFromGateway(account, gateway);
+}
+
+static void ShowAccountWhenSeeded(not_null<Main::Account*> account) {
+	if (!account->sessionExists()) {
+		return;
+	}
+	crl::on_main([account] {
+		auto &app = Core::App();
+		if (const auto window = app.activePrimaryWindow()) {
+			LOG(("OpenClaw: showing seeded account."));
+			window->showAccount(account);
+		}
+		MaybeAutoStartBot(account);
+	});
+}
+
+void StartConnectFlow(
+		not_null<Main::Account*> account,
+		Window::Controller *window) {
+	if (account->sessionExists()) {
+		return;
+	}
+
+	const auto resolved = ResolveConnectConfig();
+	if (resolved.valid() && SeedWithConfig(account, resolved)) {
+		LOG(("OpenClaw connect: seeded from saved/env config."));
+		ShowAccountWhenSeeded(account);
+		return;
+	}
+
+	if (MockModeEnabled()) {
+		MockGateway gateway;
+		if (SeedFromGateway(account, gateway)) {
+			ShowAccountWhenSeeded(account);
+			return;
+		}
+	}
+
+	if (!window) {
+		LOG(("OpenClaw connect: no window to show ConnectBox; staying on intro."));
+		return;
+	}
+
+	const auto initial = LoadConnectConfig().valid()
+		? LoadConnectConfig()
+		: ResolveConnectConfig();
+
+	const auto attempt = [account](
+			ConnectConfig config,
+			Fn<void(ConnectResult)> report) {
+		const auto ok = SeedWithConfig(account, config);
+		if (ok) {
+			SaveConnectConfig(config);
+			ShowAccountWhenSeeded(account);
+			report(ConnectResult::Success);
+		} else {
+			report(ConnectResult::Failed);
+		}
+	};
+
+	crl::on_main([initial, attempt] {
+		if (const auto window = Core::App().activePrimaryWindow()) {
+			window->show(Box(ConnectBox, initial, attempt));
+		}
+	});
+}
+
+void MaybeAutoStartBot(not_null<Main::Account*> account) {
+	const auto env = QProcessEnvironment::systemEnvironment();
+	const auto flag = env.value("OCDESKTOP_AUTOSTART_BOT");
+	if (flag.isEmpty() || flag == "0") {
+		return;
+	}
+	if (!account->sessionExists()) {
+		LOG(("OpenClaw autostart: no session, skipping."));
+		return;
+	}
+	const auto botBareId = flag.toULongLong() > 1
+		? flag.toULongLong()
+		: uint64(101);
+	auto &session = account->session();
+	auto bot = [&]() -> UserData* {
+		const auto peer = session.data().peerLoaded(
+			peerFromUser(UserId(botBareId)));
+		if (const auto user = peer ? peer->asUser() : nullptr) {
+			if (user->isBot()) {
+				return user;
+			}
+		}
+		UserData *firstBot = nullptr;
+		session.data().enumerateUsers([&](not_null<UserData*> user) {
+			if (!firstBot && user->isBot()) {
+				firstBot = user;
+			}
+		});
+		return firstBot;
+	}();
+	if (!bot) {
+		LOG(("OpenClaw autostart: no bot peer found (looked for %1, "
+			"then scanned all users).").arg(botBareId));
+		return;
+	}
+	LOG(("OpenClaw autostart: invoking sendBotStart on %1 (id=%2, isBot=%3)."
+		).arg(bot->name()
+		).arg(peerToUser(bot->id).bare
+		).arg(bot->isBot() ? "true" : "false"));
+	session.api().sendBotStart(nullptr, bot);
+	LOG(("OpenClaw autostart: sendBotStart returned without crash."));
 }
 
 } // namespace OpenClaw

@@ -488,18 +488,9 @@ void Application::startDomain() {
 		DEBUG_LOG(("Application Info: passcode needed..."));
 	}
 	if (OpenClaw::SeedingEnabled() && _domain->started()) {
-		const auto seeded = OpenClaw::SeedMockSession(&_domain->active());
-		LOG(("OpenClaw: seed result = %1, sessionExists = %2"
-			).arg(seeded ? "true" : "false"
-			).arg(_domain->active().sessionExists() ? "true" : "false"));
-		if (seeded) {
-			InvokeQueued(this, [=] {
-				if (_lastActivePrimaryWindow && _domain->started()) {
-					LOG(("OpenClaw: re-showing account post-firstShow."));
-					_lastActivePrimaryWindow->showAccount(&_domain->active());
-				}
-			});
-		}
+		OpenClaw::StartConnectFlow(
+			&_domain->active(),
+			_lastActivePrimaryWindow);
 	}
 }
 
