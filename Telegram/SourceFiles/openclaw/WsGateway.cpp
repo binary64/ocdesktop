@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/binary64/ocdesktop/blob/main/LICENSE
 */
 #include "openclaw/WsGateway.h"
+#include "openclaw/SentryReporter.h"
 
 #include <QJsonDocument>
 #include <QJsonArray>
@@ -22,8 +23,16 @@ WsGateway::WsGateway(const QString &url, const QString &token, QObject *parent)
 	_ws = new WsClient(this);
 	connect(_ws, &WsClient::connected, this, &WsGateway::onConnected);
 	connect(_ws, &WsClient::textMessage, this, &WsGateway::onTextMessage);
-	connect(_ws, &WsClient::disconnected, this, [=](const QString &) {
+	connect(_ws, &WsClient::disconnected, this, [=](const QString &reason) {
+		const bool wasReady = (_authState == AuthState::Ready);
 		_authState = AuthState::LoggedOut;
+		Sentry::addBreadcrumb(QStringLiteral("ws"),
+			QStringLiteral("disconnected: ") + reason);
+		if (wasReady) {
+			Sentry::captureException(
+				QStringLiteral("WsDisconnected"),
+				QStringLiteral("gateway dropped while ready: ") + reason);
+		}
 	});
 }
 
@@ -90,7 +99,13 @@ void WsGateway::handleResponse(int id, const QJsonObject &obj) {
 		_authed = ok;
 		_authState = ok ? AuthState::Ready : AuthState::LoggedOut;
 		if (ok) {
+			Sentry::addBreadcrumb(QStringLiteral("ws"), QStringLiteral("auth ok"));
 			send(QJsonObject{ { "id", nextRequestId() }, { "op", "sessions.list" } });
+		} else {
+			Sentry::captureException(
+				QStringLiteral("WsAuthFailed"),
+				QStringLiteral("gateway auth rejected: ")
+					+ obj.value("error").toString());
 		}
 		return;
 	}

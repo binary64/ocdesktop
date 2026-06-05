@@ -15,6 +15,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "window/notifications_manager.h"
 #include "window/window_controller.h"
 #include "core/crash_reports.h"
+#include "openclaw/SentryReporter.h"
+#include "core/version.h"
 #include "core/crash_report_window.h"
 #include "core/application.h"
 #include "core/launcher.h"
@@ -389,6 +391,9 @@ void Sandbox::singleInstanceChecked() {
 		return;
 	}
 	const auto result = CrashReports::Start();
+	OpenClaw::Sentry::init(
+		QStringLiteral("ocdesktop@") + QString::fromLatin1(AppVersionStr),
+		QStringLiteral("production"));
 	v::match(result, [&](CrashReports::Status status) {
 		if (status == CrashReports::CantOpen) {
 			new NotStartedWindow();
