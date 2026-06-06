@@ -1,0 +1,46 @@
+{
+  "_comment": "Mock fixture data for OCDesktop's MockGateway (Phase 1). Drives a fully offline, no-network experience where each 'dialog' is a stand-in for a Hermes session. No live replies — static scripted history only.",
+  "self": {
+    "id": 1,
+    "name": "You",
+    "username": "you"
+  },
+  "peers": [
+    { "id": 101, "name": "Arthur", "username": "arthur", "about": "House butler & systems concierge. Your Hermes agent.", "isBot": true },
+    { "id": 102, "name": "Hermes", "username": "hermes", "about": "The gateway itself. System session.", "isBot": true },
+    { "id": 103, "name": "Sam — Powerlinks", "username": "sam_powerlinks", "about": "Powerlinks Motorcycles workstream", "isBot": false },
+    { "id": 104, "name": "Garden", "username": "garden", "about": "Garden planning & plant tracker session", "isBot": true },
+    { "id": 105, "name": "Infra / k8s", "username": "infra", "about": "Cluster + deployment ops session", "isBot": true }
+  ],
+  "dialogs": [
+    { "peerId": 101, "pinned": true,  "archived": false, "unreadCount": 0 },
+    { "peerId": 102, "pinned": true,  "archived": false, "unreadCount": 0 },
+    { "peerId": 103, "pinned": false, "archived": false, "unreadCount": 2 },
+    { "peerId": 104, "pinned": false, "archived": false, "unreadCount": 0 },
+    { "peerId": 105, "pinned": false, "archived": false, "unreadCount": 1 }
+  ],
+  "history": {
+    "101": [
+      { "id": 1001, "fromId": 101, "text": "Morning, James. Main is a clean upstream mirror and PR #5 (the Hermes gateway) is up.", "date": 1717480800 },
+      { "id": 1002, "fromId": 1,   "text": "nice. how's the mock coming?", "date": 1717480860 },
+      { "id": 1003, "fromId": 101, "text": "This conversation you're reading IS the mock — every message here is loaded from mock.json. No Telegram servers involved.", "date": 1717480920 },
+      { "id": 1004, "fromId": 101, "text": "Each chat in the sidebar is a Hermes session. Sending a message will eventually post a turn into that session.", "date": 1717480980 }
+    ],
+    "102": [
+      { "id": 2001, "fromId": 102, "text": "Gateway online. Backend: MockGateway (in-memory). 0 network connections.", "date": 1717470000 },
+      { "id": 2002, "fromId": 102, "text": "When HermesGateway lands, this session becomes the control channel.", "date": 1717470600 }
+    ],
+    "103": [
+      { "id": 3001, "fromId": 103, "text": "Sign's updated to POWERLINKS MOTORCYCLES. Site's live on Vercel.", "date": 1717383600 },
+      { "id": 3002, "fromId": 1,   "text": "did the GBP phone number get sorted?", "date": 1717384200 },
+      { "id": 3003, "fromId": 103, "text": "Pending — needs the Business Profile claimed under the Workspace account first.", "date": 1717384800 }
+    ],
+    "104": [
+      { "id": 4001, "fromId": 104, "text": "Ophelia (the new fuchsia) is settling in. Doris is rallying for a rare second bloom.", "date": 1717297200 },
+      { "id": 4002, "fromId": 104, "text": "Watering reminder: borders need a soak before the warm spell.", "date": 1717300800 }
+    ],
+    "105": [
+      { "id": 5001, "fromId": 105, "text": "All nodes Ready. ArgoCD synced. No drift.", "date": 1717207200 }
+    ]
+  }
+}

@@ -185,6 +185,7 @@ void Controller::showAccount(
 		auto oldContentCache = _widget.grabForSlideAnimation();
 		_widget.updateWindowIcon();
 		if (session) {
+			LOG(("OpenClaw: showAccount -> setupMain (session live)"));
 			setupSideBar();
 			setupMain(singlePeerShowAtMsgId, std::move(oldContentCache));
 
@@ -216,6 +217,7 @@ void Controller::showAccount(
 
 			session->updates().updateOnline(crl::now());
 		} else {
+			LOG(("OpenClaw: showAccount -> setupIntro (session null)"));
 			sideBarChanged();
 			setupIntro(std::move(oldContentCache));
 			_widget.updateGlobalMenu();

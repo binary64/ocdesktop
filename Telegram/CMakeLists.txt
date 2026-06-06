@@ -1944,6 +1944,21 @@ PRIVATE
     window/themes/window_themes_generate_name.h
     apiwrap.cpp
     apiwrap.h
+    openclaw/GatewayInterface.h
+    openclaw/ConnectBox.cpp
+    openclaw/ConnectBox.h
+    openclaw/ConnectConfig.cpp
+    openclaw/ConnectConfig.h
+    openclaw/MockGateway.cpp
+    openclaw/MockGateway.h
+    openclaw/MockSeeder.cpp
+    openclaw/MockSeeder.h
+    openclaw/SentryReporter.cpp
+    openclaw/SentryReporter.h
+    openclaw/WsClient.cpp
+    openclaw/WsClient.h
+    openclaw/WsGateway.cpp
+    openclaw/WsGateway.h
     config.h
     logs.cpp
     logs.h
@@ -2004,6 +2019,7 @@ PRIVATE
     qrc/telegram/picker.qrc
     qrc/telegram/telegram.qrc
     qrc/telegram/sounds.qrc
+    qrc/openclaw.qrc
     winrc/Telegram.rc
     winrc/Telegram.manifest
     langs/lang.strings

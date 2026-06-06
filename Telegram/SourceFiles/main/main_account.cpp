@@ -455,6 +455,9 @@ void Account::startMtp(std::unique_ptr<MTP::Config> config) {
 		checkForUpdates(message) || checkForNewSession(message);
 	});
 	_mtp->setGlobalFailHandler([=](const MTP::Error &, const MTP::Response &) {
+		if (_offlineSession) {
+			return;
+		}
 		if (const auto session = maybeSession()) {
 			crl::on_main(session, [=] { logOut(); });
 		}
