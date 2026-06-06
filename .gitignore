@@ -74,3 +74,9 @@ settings.local.json
 dist/OCDesktop-x86_64.AppImage
 squashfs-root/usr/share/ocdesktop/hermes.env
 squashfs-root/usr/bin/ocdesktop
+bridge/__pycache__/
+dist/*.AppImage
+bridge/_probe.py
+squashfs-root/
+Telegram/build/docker/centos_env/Dockerfile.gen
+dist/*.sha256

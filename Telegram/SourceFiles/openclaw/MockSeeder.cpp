@@ -22,6 +22,7 @@ https://github.com/binary64/ocdesktop/blob/main/LICENSE
 #include "data/data_user.h"
 #include "data/data_peer_id.h"
 #include "history/history.h"
+#include "history/history_item.h"
 #include "apiwrap.h"
 #include "logs.h"
 
@@ -234,6 +235,101 @@ bool SeedFromGateway(not_null<Main::Account*> account, Gateway &gateway) {
 	return true;
 }
 
+// Apply a gateway message to an EXISTING session, idempotently. Used by both
+// the live update stream (stream.start / stream.delta / message.new) and the
+// relaunch refresh. If a bubble with this id already exists we edit its text
+// in place (so streaming deltas grow a single bubble, and re-delivered finals
+// don't duplicate); otherwise we add a new bubble. This replaces the old
+// "addNewMessage on every frame" handler, which crashed on the second frame
+// because tdesktop's data layer rejects a duplicate message id.
+void ApplyGatewayMessage(
+		not_null<Main::Session*> session,
+		const GatewayMessage &msg) {
+	auto &data = session->data();
+	const auto peerId = peerFromUser(UserId(msg.peerId));
+	if (const auto existing = data.message(peerId, MsgId(msg.id))) {
+		existing->setText({ msg.text, {} });
+		data.requestItemTextRefresh(existing);
+		data.notifyItemDataChange(existing);
+		return;
+	}
+	data.addNewMessage(
+		MakeMessage(msg),
+		MessageFlags(),
+		NewMessageType::Unread);
+}
+
+void WireUpdateHandler(not_null<Main::Account*> account) {
+	if (!LiveGateway) {
+		return;
+	}
+	const auto weakSession = base::make_weak(&account->session());
+	LiveGateway->setUpdateHandler([weakSession](const GatewayMessage &msg) {
+		crl::on_main([weakSession, msg] {
+			const auto session = weakSession.get();
+			if (!session) {
+				return;
+			}
+			if (msg.fromId == kSelfBareId) {
+				return;
+			}
+			ApplyGatewayMessage(session, msg);
+		});
+	});
+}
+
+// Reattach the live gateway to an ALREADY-EXISTING (persisted) session on
+// relaunch: tdesktop seeds the session only on first run, so without this the
+// gateway is never recreated and outgoing sends route nowhere. We rebuild the
+// gateway, mark the session offline again (the flag is runtime-only, never
+// persisted), refresh dialogs/messages from the bridge so stale cached history
+// is corrected, and rewire the update handler.
+static bool ReattachWithConfig(
+		not_null<Main::Account*> account,
+		const ConnectConfig &config) {
+	if (!account->sessionExists() || config.url.isEmpty()) {
+		return false;
+	}
+	LiveGateway = std::make_unique<WsGateway>(config.url, config.token);
+	if (!LiveGateway->bootstrapBlocking()) {
+		LOG(("OpenClaw reattach: WS bootstrap failed for %1").arg(config.url));
+		LiveGateway = nullptr;
+		return false;
+	}
+	account->setOfflineSession(true);
+
+	auto &session = account->session();
+	auto &data = session.data();
+
+	auto users = QVector<MTPUser>();
+	for (const auto &[id, peer] : LiveGateway->peers()) {
+		if (id == PeerId(kSelfBareId)) {
+			continue;
+		}
+		users.push_back(MakeUser(peer, false));
+	}
+	if (!users.isEmpty()) {
+		data.processUsers(MTP_vector<MTPUser>(users));
+	}
+
+	auto messages = QVector<MTPMessage>();
+	for (const auto &[peerId, msgs] : LiveGateway->history()) {
+		for (const auto &msg : msgs) {
+			messages.push_back(MakeMessage(msg));
+		}
+	}
+	auto dialogs = QVector<MTPDialog>();
+	for (const auto &dialog : LiveGateway->dialogs()) {
+		dialogs.push_back(MakeDialog(dialog));
+	}
+	data.applyDialogs(nullptr, messages, dialogs);
+
+	WireUpdateHandler(account);
+	LOG(("OpenClaw reattach: refreshed %1 users, %2 dialogs, %3 messages."
+		).arg(users.size()).arg(dialogs.size()).arg(messages.size()));
+	return true;
+}
+
 // Core: given a resolved config, create the live session by bootstrapping the
 // WS gateway. Returns true only when bootstrap + seed both succeed. On any
 // failure the LiveGateway is torn down and false is returned so the caller can
@@ -259,22 +355,7 @@ static bool SeedWithConfig(
 		return false;
 	}
 
-	const auto weakSession = base::make_weak(&account->session());
-	LiveGateway->setUpdateHandler([weakSession](const GatewayMessage &msg) {
-		crl::on_main([weakSession, msg] {
-			const auto session = weakSession.get();
-			if (!session) {
-				return;
-			}
-			if (msg.fromId == kSelfBareId) {
-				return;
-			}
-			session->data().addNewMessage(
-				MakeMessage(msg),
-				MessageFlags(),
-				NewMessageType::Unread);
-		});
-	});
+	WireUpdateHandler(account);
 	return true;
 }
 
@@ -289,12 +370,7 @@ bool SeedMockSession(not_null<Main::Account*> account) {
 			return true;
 		}
 	}
-
-	if (!MockModeEnabled()) {
-		return false;
-	}
-	MockGateway gateway;
-	return SeedFromGateway(account, gateway);
+	return false;
 }
 
 static void ShowAccountWhenSeeded(not_null<Main::Account*> account) {
@@ -314,23 +390,25 @@ static void ShowAccountWhenSeeded(not_null<Main::Account*> account) {
 void StartConnectFlow(
 		not_null<Main::Account*> account,
 		Window::Controller *window) {
+	const auto resolved = ResolveConnectConfig();
+
+	// Relaunch path: the session is already persisted, so tdesktop won't
+	// re-seed. Reattach the live gateway (and refresh stale cached history)
+	// so outgoing sends route to the bridge and chats show current content.
 	if (account->sessionExists()) {
+		if (resolved.valid() && ReattachWithConfig(account, resolved)) {
+			LOG(("OpenClaw connect: reattached live gateway on relaunch."));
+		} else {
+			LOG(("OpenClaw connect: session exists but reattach failed; "
+				"sends will not reach the bridge until next clean seed."));
+		}
 		return;
 	}
 
-	const auto resolved = ResolveConnectConfig();
 	if (resolved.valid() && SeedWithConfig(account, resolved)) {
 		LOG(("OpenClaw connect: seeded from saved/env config."));
 		ShowAccountWhenSeeded(account);
 		return;
-	}
-
-	if (MockModeEnabled()) {
-		MockGateway gateway;
-		if (SeedFromGateway(account, gateway)) {
-			ShowAccountWhenSeeded(account);
-			return;
-		}
 	}
 
 	if (!window) {
