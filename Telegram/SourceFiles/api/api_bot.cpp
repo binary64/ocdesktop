@@ -32,6 +32,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "payments/payments_checkout_process.h"
 #include "payments/payments_non_panel_process.h"
 #include "main/main_session.h"
+#include "main/main_account.h"
 #include "mainwidget.h"
 #include "mainwindow.h"
 #include "window/window_session_controller.h"
@@ -62,6 +63,12 @@ void SendBotCallbackData(
 	}
 	const auto history = item->history();
 	const auto session = &history->session();
+	if (session->account().offlineSession()) {
+		if (done) {
+			done();
+		}
+		return;
+	}
 	const auto owner = &history->owner();
 	const auto api = &session->api();
 	const auto bot = item->getMessageBot();

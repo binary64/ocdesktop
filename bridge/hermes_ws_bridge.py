@@ -82,6 +82,13 @@ def _preview_title(sess: Dict[str, Any]) -> str:
 
 
 class HermesWsBridge:
+    # Synthetic message ids for the live send/stream path live in a high band:
+    # above any real DB message id (so they sort as newest) but safely under
+    # INT32_MAX, because the C++ seeder narrows every id through MTP_int (32-bit).
+    # A 64-bit id here overflows int32 and crashes the client on send.
+    _SYNTH_ID_BASE = 1_000_000_000
+    _INT32_MAX = (1 << 31) - 1
+
     def __init__(self, token: str, *, session_limit: int = 50):
         self._token = token
         self._session_limit = session_limit
@@ -89,6 +96,23 @@ class HermesWsBridge:
         # peerId -> session_id, rebuilt on every sessions.list
         self._peer_to_session: Dict[int, str] = {}
         self._session_to_peer: Dict[str, int] = {}
+        # Monotonic allocator for live send/stream message ids.
+        self._synth_counter = self._SYNTH_ID_BASE
+
+    def _next_synth_id(self) -> int:
+        self._synth_counter += 1
+        if self._synth_counter >= self._INT32_MAX:
+            self._synth_counter = self._SYNTH_ID_BASE + 1
+        return self._synth_counter
+
+    def _last_message_ids(self) -> Dict[str, int]:
+        """Real last user/assistant message id per session, for dialog anchoring."""
+        db = self._session_db()
+        rows = db._conn.execute(
+            "SELECT session_id, MAX(id) AS top FROM messages "
+            "WHERE role IN ('user','assistant') GROUP BY session_id"
+        ).fetchall()
+        return {r[0]: int(r[1] or 0) for r in rows}
 
     # ----- lazy Hermes wiring -----
     def _session_db(self):
@@ -151,6 +175,7 @@ class HermesWsBridge:
         )
         self._peer_to_session.clear()
         self._session_to_peer.clear()
+        last_ids = self._last_message_ids()
         peers: List[Dict[str, Any]] = []
         dialogs: List[Dict[str, Any]] = []
         for s in sessions:
@@ -170,7 +195,7 @@ class HermesWsBridge:
                 "pinned": False,
                 "archived": False,
                 "unreadCount": 0,
-                "topMessageId": s.get("message_count", 0) or 0,
+                "topMessageId": last_ids.get(sid, 0),
             })
         return {"peers": peers, "dialogs": dialogs}
 
@@ -230,6 +255,8 @@ def build_app(bridge: "HermesWsBridge"):
                 continue
             op = frame.get("op")
             rid = frame.get("id")
+            logger.info("recv op=%s id=%s peerId=%s authed=%s",
+                        op, rid, frame.get("peerId"), authed)
 
             if op == "auth":
                 if hmac.compare_digest(str(frame.get("token", "")), bridge._token):
@@ -283,27 +310,37 @@ async def _handle_send(bridge, ws, send, loop, frame, rid) -> None:
     peer_id = int(frame["peerId"])
     text = str(frame.get("text", ""))
     sid = bridge._peer_to_session.get(peer_id)
+    logger.info("message.send peerId=%s sid=%s text=%r", peer_id, sid, text[:80])
     if sid is None:
+        logger.warning("message.send: no session for peerId=%s (have %s peers mapped)",
+                       peer_id, len(bridge._peer_to_session))
         await send({"id": rid, "ok": False, "error": "session not found"})
         return
 
     now = int(time.time())
-    user_msg_id = int(f"{now}{peer_id % 1000:03d}")
+    user_msg_id = bridge._next_synth_id()
     await send({"id": rid, "ok": True, "result": {"message": {
         "id": user_msg_id, "peerId": peer_id, "fromId": SELF_PEER_ID,
         "text": text, "date": now,
     }}})
 
-    reply_msg_id = user_msg_id + 1
+    reply_msg_id = bridge._next_synth_id()
+    # build 5's client update handler edits the bubble in place: stream.start
+    # creates an empty bubble, each stream.delta REPLACES its text (setText), and
+    # message.new finalises it — all sharing reply_msg_id, no duplicates. Because
+    # the client replaces (not appends), we stream the CUMULATIVE text each frame.
     await send({"op": "update", "kind": "typing", "peerId": peer_id, "typing": True})
     await send({"op": "update", "kind": "stream.start", "peerId": peer_id, "msgId": reply_msg_id})
+
+    acc = {"text": ""}
 
     def on_delta(delta: str) -> None:
         if not delta:
             return
+        acc["text"] += delta
         fut = asyncio.run_coroutine_threadsafe(
             send({"op": "update", "kind": "stream.delta",
-                  "peerId": peer_id, "msgId": reply_msg_id, "text": delta}),
+                  "peerId": peer_id, "msgId": reply_msg_id, "text": acc["text"]}),
             loop,
         )
         try:
@@ -316,7 +353,17 @@ async def _handle_send(bridge, ws, send, loop, frame, rid) -> None:
         result = agent.run_conversation(user_message=text, task_id=sid or str(uuid.uuid4()))
         return (result or {}).get("final_response", "") if isinstance(result, dict) else str(result)
 
-    final_text = await loop.run_in_executor(None, _run)
+    try:
+        final_text = await loop.run_in_executor(None, _run)
+        logger.info("message.send done peerId=%s reply_len=%s", peer_id, len(final_text or ""))
+    except Exception as e:  # noqa: BLE001
+        logger.exception("agent run failed for peerId=%s", peer_id)
+        await send({"op": "update", "kind": "typing", "peerId": peer_id, "typing": False})
+        await send({"op": "update", "kind": "message.new", "peerId": peer_id, "message": {
+            "id": reply_msg_id, "peerId": peer_id, "fromId": peer_id,
+            "text": f"⚠️ agent error: {e}", "date": int(time.time()),
+        }})
+        return
 
     await send({"op": "update", "kind": "message.new", "peerId": peer_id, "message": {
         "id": reply_msg_id, "peerId": peer_id, "fromId": peer_id,
