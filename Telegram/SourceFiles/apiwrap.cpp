@@ -75,6 +75,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "main/main_session.h"
 #include "main/main_session_settings.h"
 #include "main/main_account.h"
+#include "openclaw/MockSeeder.h"
+#include "openclaw/GatewayInterface.h"
 #include "ui/boxes/confirm_box.h"
 #include "ui/boxes/emoji_stake_box.h"
 #include "ui/controls/ton_common.h"
@@ -4078,6 +4080,11 @@ void ApiWrap::sendMessage(
 	action.generateLocal = true;
 	sendAction(action);
 
+	const auto offlineSession = _session->account().offlineSession();
+	const auto liveGateway = offlineSession
+		? OpenClaw::ActiveGateway()
+		: nullptr;
+
 	const auto clearCloudDraft = action.clearDraft;
 	const auto draftTopicRootId = action.replyTo.topicRootId;
 	const auto draftMonoforumPeerId = action.replyTo.monoforumPeerId;
@@ -4245,6 +4252,21 @@ void ApiWrap::sendMessage(
 			.effectId = action.options.effectId,
 			.suggest = HistoryMessageSuggestInfo(action.options),
 		}, sending, media);
+		if (offlineSession) {
+			if (liveGateway) {
+				const auto replyToId = action.replyTo.messageId
+					? int64(action.replyTo.messageId.msg.bare)
+					: int64(0);
+				liveGateway->sendMessage(
+					peerToUser(peer->id).bare,
+					sending.text,
+					replyToId,
+					nullptr,
+					nullptr);
+			}
+			isFirst = false;
+			continue;
+		}
 		const auto done = [=](
 				const MTPUpdates &result,
 				const MTP::Response &response) {
@@ -4331,6 +4353,15 @@ void ApiWrap::sendBotStart(
 		PeerData *chat,
 		const QString &startTokenForChat) {
 	Expects(bot->isBot());
+
+	if (_session->account().offlineSession()) {
+		const auto target = chat ? chat : bot.get();
+		auto message = MessageToSend(
+			Api::SendAction(_session->data().history(target)));
+		message.textWithTags = { u"/start"_q, TextWithTags::Tags() };
+		sendMessage(std::move(message));
+		return;
+	}
 
 	if (chat && chat->isChannel() && !chat->isMegagroup()) {
 		ShowAddParticipantsError(show, "USER_BOT", chat, bot);

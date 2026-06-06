@@ -11,6 +11,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "base/event_filter.h"
 #include "base/qt_signal_producer.h"
 #include "boxes/about_box.h"
+#include "openclaw/OcVersion.h"
 #include "boxes/peer_list_controllers.h"
 #include "boxes/premium_preview_box.h"
 #include "calls/group/calls_group_common.h"
@@ -384,15 +385,17 @@ MainMenu::MainMenu(
 	parentResized();
 
 	_telegram->setMarkedText(tr::link(
-		u"Telegram Desktop"_q,
-		u"https://desktop.telegram.org"_q));
+		OpenClaw::OcAppName(),
+		OpenClaw::OcHomeUrl()));
 	_telegram->setLinksTrusted();
 	_version->setMarkedText(
 		tr::link(
 			tr::lng_settings_current_version(
 				tr::now,
 				lt_version,
-				currentVersionText()),
+				currentVersionText()
+					+ u" \u00b7 "_q
+					+ OpenClaw::OcVersionText()),
 			1) // Link 1.
 		.append(QChar(' '))
 		.append(QChar(8211))

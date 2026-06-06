@@ -1,0 +1,148 @@
+name: AppImage (Hermes mock build).
+
+# Builds a self-contained Linux AppImage of OCDesktop running against the
+# in-memory MockGateway (no network, no Telegram login).
+#
+# This workflow does NOT compile the dependency stack. It pulls the prebuilt
+# deps image (ghcr.io/<owner>/ocdesktop-deps, produced by build-deps.yml) and
+# compiles ONLY the app layer + packages the AppImage. That keeps the hot path
+# well under the time budget. ccache persists object files across runs so even
+# the app compile is incremental.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/hermes-gateway
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+      - 'LEGAL'
+      - 'LICENSE'
+      # Changes to the build env retrigger build-deps.yml, not this one.
+      - 'Telegram/build/docker/centos_env/**'
+
+concurrency:
+  group: ocdesktop-appimage-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  appimage:
+    name: App build -> AppImage
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    env:
+      DEPS_IMAGE: ghcr.io/${{ github.repository_owner }}/ocdesktop-deps
+
+    steps:
+      - name: Clone.
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Free up some disk space.
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be
+        with:
+          tool-cache: true
+
+      - name: Lowercase image name.
+        id: img
+        run: echo "ref=$(echo "$DEPS_IMAGE" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR.
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull prebuilt deps image.
+        run: docker pull "${{ steps.img.outputs.ref }}:latest"
+
+      - name: Telegram Desktop app build.
+        run: |
+          docker run --rm \
+            -u $(id -u) \
+            -v $PWD:/usr/src/tdesktop \
+            -e CONFIG=Release \
+            "${{ steps.img.outputs.ref }}:latest" \
+            /usr/src/tdesktop/Telegram/build/docker/centos_env/build.sh \
+            -D CMAKE_CONFIGURATION_TYPES=Release \
+            -D TDESKTOP_API_TEST=ON \
+            -D DESKTOP_APP_DISABLE_AUTOUPDATE=ON \
+            -D DESKTOP_APP_DISABLE_CRASH_REPORTS=ON
+
+      - name: Check build output.
+        run: |
+          bin="out/Release/Telegram"
+          if [ ! -f "$bin" ]; then
+            echo "Build failed: $bin missing"; exit 1
+          fi
+          echo "Built $(stat -c %s "$bin") bytes"
+
+      - name: Package AppImage.
+        run: |
+          set -e
+          APPDIR=OCDesktop.AppDir
+          mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/share/applications" "$APPDIR/usr/share/icons/hicolor/256x256/apps"
+          cp out/Release/Telegram "$APPDIR/usr/bin/OCDesktop"
+          # Icon (reuse tdesktop's 256px icon if present, else a blank).
+          ICON_SRC=$(find Telegram/Resources/art -name 'icon256*.png' | head -1 || true)
+          if [ -n "$ICON_SRC" ]; then cp "$ICON_SRC" "$APPDIR/usr/share/icons/hicolor/256x256/apps/ocdesktop.png"; fi
+          cp "$APPDIR/usr/share/icons/hicolor/256x256/apps/ocdesktop.png" "$APPDIR/ocdesktop.png" 2>/dev/null || touch "$APPDIR/ocdesktop.png"
+
+          cat > "$APPDIR/ocdesktop.desktop" <<EOF
+          [Desktop Entry]
+          Type=Application
+          Name=OCDesktop (Hermes mock)
+          Exec=OCDesktop
+          Icon=ocdesktop
+          Categories=Network;
+          Terminal=false
+          EOF
+          cp "$APPDIR/ocdesktop.desktop" "$APPDIR/usr/share/applications/"
+
+          cat > "$APPDIR/AppRun" <<'EOF'
+          #!/bin/bash
+          HERE="$(dirname "$(readlink -f "${0}")")"
+          export PATH="$HERE/usr/bin:$PATH"
+          # Force the mocked experience regardless of any user config.
+          export OCDESKTOP_MOCK=1
+          exec "$HERE/usr/bin/OCDesktop" "$@"
+          EOF
+          chmod +x "$APPDIR/AppRun"
+
+          # Bundle dependencies + build the .AppImage via linuxdeploy.
+          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+          chmod +x linuxdeploy*.AppImage
+          export QML_SOURCES_PATHS=""
+          export OUTPUT=OCDesktop-x86_64.AppImage
+          ./linuxdeploy-x86_64.AppImage --appimage-extract-and-run \
+            --appdir "$APPDIR" \
+            --plugin qt \
+            --output appimage || {
+              echo "linuxdeploy-qt failed; falling back to plain linuxdeploy (may miss Qt plugins)";
+              ./linuxdeploy-x86_64.AppImage --appimage-extract-and-run --appdir "$APPDIR" --output appimage;
+            }
+          ls -la *.AppImage
+
+      - name: Upload AppImage.
+        uses: actions/upload-artifact@v4
+        with:
+          name: OCDesktop-AppImage
+          path: "*.AppImage"
+          if-no-files-found: error
+
+      - name: Upload raw binary (fallback).
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OCDesktop-binary
+          path: out/Release/Telegram
+          if-no-files-found: ignore
