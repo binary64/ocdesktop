@@ -18,6 +18,7 @@ https://github.com/binary64/ocdesktop/blob/main/LICENSE
 #include "main/main_session.h"
 #include "main/main_session_settings.h"
 #include "base/weak_ptr.h"
+#include "base/unixtime.h"
 #include "data/data_session.h"
 #include "data/data_user.h"
 #include "data/data_peer_id.h"
@@ -87,6 +88,7 @@ constexpr auto kSelfBareId = uint64(1);
 	if (msg.fromId == kSelfBareId) {
 		flags |= Flag::f_out;
 	}
+	const auto date = (msg.date > 0) ? msg.date : TimeId(base::unixtime::now());
 	return MTP_message(
 		MTP_flags(flags),
 		MTP_int(int(msg.id)),
@@ -100,7 +102,7 @@ constexpr auto kSelfBareId = uint64(1);
 		MTPlong(), // via_business_bot_id
 		MTPPeer(), // guestchat_via_from
 		MTPMessageReplyHeader(),
-		MTP_int(msg.date),
+		MTP_int(date),
 		MTP_string(msg.text),
 		MTP_messageMediaEmpty(),
 		MTPReplyMarkup(),
