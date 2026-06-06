@@ -105,13 +105,25 @@ class HermesWsBridge:
             self._synth_counter = self._SYNTH_ID_BASE + 1
         return self._synth_counter
 
-    def _last_message_ids(self) -> Dict[str, int]:
-        """Real last user/assistant message id per session, for dialog anchoring."""
+    def _last_message_ids(self, session_ids=None) -> Dict[str, int]:
+        """Real last user/assistant message id per session, for dialog anchoring.
+
+        Scoped to the given session_ids (the ones actually being listed) so we
+        don't full-scan MAX(id) across the entire messages table — that grouped
+        scan over all sessions took ~10s and stalled sessions.list.
+        """
         db = self._session_db()
-        rows = db._conn.execute(
-            "SELECT session_id, MAX(id) AS top FROM messages "
-            "WHERE role IN ('user','assistant') GROUP BY session_id"
-        ).fetchall()
+        base = ("SELECT session_id, MAX(id) AS top FROM messages "
+                "WHERE role IN ('user','assistant')")
+        if session_ids:
+            ids = list(session_ids)
+            placeholders = ",".join("?" * len(ids))
+            rows = db._conn.execute(
+                base + f" AND session_id IN ({placeholders}) GROUP BY session_id",
+                ids,
+            ).fetchall()
+        else:
+            rows = db._conn.execute(base + " GROUP BY session_id").fetchall()
         return {r[0]: int(r[1] or 0) for r in rows}
 
     # ----- lazy Hermes wiring -----
@@ -175,7 +187,7 @@ class HermesWsBridge:
         )
         self._peer_to_session.clear()
         self._session_to_peer.clear()
-        last_ids = self._last_message_ids()
+        last_ids = self._last_message_ids([s["id"] for s in sessions])
         peers: List[Dict[str, Any]] = []
         dialogs: List[Dict[str, Any]] = []
         for s in sessions:
