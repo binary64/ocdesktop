@@ -3,7 +3,7 @@ HERE="$(dirname "$(readlink -f "$0")")"
 export LD_LIBRARY_PATH="$HERE/usr/lib:$LD_LIBRARY_PATH"
 
 ENVFILE="$HERE/usr/share/ocdesktop/hermes.env"
-export OCDESKTOP_HERMES_URL="${OCDESKTOP_HERMES_URL:-ws://100.99.160.15:8770/ocdesktop}"
+export OCDESKTOP_HERMES_URL="${OCDESKTOP_HERMES_URL:-ws://vmi3137202.lobster-bonytongue.ts.net:8770/ocdesktop}"
 export OCDESKTOP_HERMES_ENV="${OCDESKTOP_HERMES_ENV:-$ENVFILE}"
 
 exec "$HERE/usr/bin/ocdesktop" "$@"
