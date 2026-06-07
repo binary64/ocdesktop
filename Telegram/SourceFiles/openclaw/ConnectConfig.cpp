@@ -30,6 +30,7 @@ namespace {
 	if (config.url.isEmpty()) {
 		return config;
 	}
+	config.user = env.value("OCDESKTOP_HERMES_USER");
 	config.token = env.value("OCDESKTOP_HERMES_TOKEN");
 	if (config.token.isEmpty()) {
 		const auto envFile = env.value("OCDESKTOP_HERMES_ENV");
@@ -65,6 +66,7 @@ ConnectConfig LoadConnectConfig() {
 	const auto obj = doc.object();
 	config.url = obj.value("url").toString();
 	config.token = obj.value("token").toString();
+	config.user = obj.value("user").toString();
 	return config;
 }
 
@@ -72,6 +74,7 @@ bool SaveConnectConfig(const ConnectConfig &config) {
 	auto obj = QJsonObject();
 	obj.insert("url", config.url);
 	obj.insert("token", config.token);
+	obj.insert("user", config.user);
 	const auto bytes = QJsonDocument(obj).toJson(QJsonDocument::Indented);
 
 	QFile f(ConfigPath());

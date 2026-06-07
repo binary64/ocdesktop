@@ -80,3 +80,7 @@ bridge/_probe.py
 squashfs-root/
 Telegram/build/docker/centos_env/Dockerfile.gen
 dist/*.sha256
+qa_out/
+qa10.sh
+shot*.png
+run_*.log

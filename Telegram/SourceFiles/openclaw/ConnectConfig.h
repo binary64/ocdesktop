@@ -8,6 +8,7 @@ https://github.com/binary64/ocdesktop/blob/main/LICENSE
 #pragma once
 
 #include <QString>
+#include <vector>
 
 namespace OpenClaw {
 
@@ -18,11 +19,41 @@ namespace OpenClaw {
 struct ConnectConfig {
 	QString url;
 	QString token;
+	QString user;
 
 	[[nodiscard]] bool valid() const {
 		return !url.isEmpty();
 	}
+
+	[[nodiscard]] bool hasUser() const {
+		return !user.isEmpty();
+	}
 };
+
+// The two household members served by the shared bridge. The id is the
+// Hermes user_id (Telegram sender id) the bridge filters sessions on; the
+// label is what the picker shows. Kept here so the picker, the gateway auth
+// frame, and the menu "switch user" entry all agree on one source of truth.
+struct KnownUser {
+	QString id;
+	QString label;
+};
+
+[[nodiscard]] inline std::vector<KnownUser> KnownUsers() {
+	return {
+		{ u"0000000001"_q, u"James"_q },
+		{ u"0000000002"_q, u"Abi"_q },
+	};
+}
+
+[[nodiscard]] inline QString UserDisplayName(const QString &id) {
+	for (const auto &u : KnownUsers()) {
+		if (u.id == id) {
+			return u.label;
+		}
+	}
+	return id;
+}
 
 // Reads saved config; returns an empty (invalid) config if none on disk.
 [[nodiscard]] ConnectConfig LoadConnectConfig();

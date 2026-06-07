@@ -16,10 +16,11 @@ https://github.com/binary64/ocdesktop/blob/main/LICENSE
 
 namespace OpenClaw {
 
-WsGateway::WsGateway(const QString &url, const QString &token, QObject *parent)
+WsGateway::WsGateway(const QString &url, const QString &token, const QString &user, QObject *parent)
 : QObject(parent)
 , _url(url)
-, _token(token) {
+, _token(token)
+, _user(user) {
 	_ws = new WsClient(this);
 	connect(_ws, &WsClient::connected, this, &WsGateway::onConnected);
 	connect(_ws, &WsClient::textMessage, this, &WsGateway::onTextMessage);
@@ -47,11 +48,15 @@ void WsGateway::send(const QJsonObject &frame) {
 }
 
 void WsGateway::onConnected() {
-	send(QJsonObject{
+	auto frame = QJsonObject{
 		{ "id", nextRequestId() },
 		{ "op", "auth" },
 		{ "token", _token },
-	});
+	};
+	if (!_user.isEmpty()) {
+		frame.insert("user", _user);
+	}
+	send(frame);
 }
 
 bool WsGateway::bootstrapBlocking(int timeoutMs) {

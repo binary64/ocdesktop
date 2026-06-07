@@ -1949,6 +1949,8 @@ PRIVATE
     openclaw/ConnectBox.h
     openclaw/ConnectConfig.cpp
     openclaw/ConnectConfig.h
+    openclaw/UserPickerBox.cpp
+    openclaw/UserPickerBox.h
     openclaw/MockGateway.cpp
     openclaw/MockGateway.h
     openclaw/MockSeeder.cpp

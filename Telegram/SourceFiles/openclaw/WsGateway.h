@@ -31,7 +31,7 @@ namespace OpenClaw {
 class WsGateway final : public QObject, public GatewayInterface {
 	Q_OBJECT
 public:
-	WsGateway(const QString &url, const QString &token, QObject *parent = nullptr);
+	WsGateway(const QString &url, const QString &token, const QString &user = QString(), QObject *parent = nullptr);
 	~WsGateway() override;
 
 	// Block-wait the Qt event loop until auth + sessions.list + all
@@ -88,6 +88,7 @@ private:
 	WsClient *_ws = nullptr;
 	QString _url;
 	QString _token;
+	QString _user;
 	AuthState _authState = AuthState::LoggedOut;
 	UpdateHandler _updateHandler;
 	int _requestId = 0;
