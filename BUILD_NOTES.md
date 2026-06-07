@@ -18,6 +18,56 @@ a number he never receives = a build that failed QA and was rebuilt, not shipped
 Never ship on assumption (build 10 shipped a crash because QA bypassed the click
 path via an env-var shortcut — don't repeat that).
 
+## 2026-06-07 — build 13: System picker member + LIVE-PUSH (incoming-msg fix)
+SYSTEM BUTTON: bridge roster() appends synthetic {"id":"system","label":"System"};
+list_sessions(user="system") filters to sessions whose user_id is NOT in the
+named-roster set (legacy NULL + any unnamed id). Static KnownUsers() fallback also
+gains a System entry. ~757 such sessions live.
+
+INCOMING-MESSAGES BUG (was: "new messages from the session don't come through"):
+ROOT CAUSE — bridge only pushed updates from INSIDE _handle_send. Any message
+arriving by another route (Telegram, cron, proactive agent output) lands in the
+session DB but was never pushed → invisible on an open client.
+FIX — per-connection async poller poll_new_messages() in ws_handler: keeps a
+per-peer watermark dict (peerId→last pushed msg id), every 2s calls
+bridge.messages_after(peer, watermark) (reads DB straight, source-agnostic) and
+emits {"op":"update","kind":"message.new",...} for each new row, advancing the wm.
+Watermark seeded from sessions.list dialogs' topMessageId; _handle_send advances
+it past the DB max after a streamed turn so the poller doesn't double-render the
+reply it already streamed under synthetic ids. Poller task created on first
+sessions.list, cancelled on socket close.
+THIS PUSH RAIL is what the browser-control tool (next build) rides on: a new
+update kind pushed the same way → client acts on it.
+VERIFIED end-to-end: append_message() out-of-band into a live session → ws client
+got message.new in <2s, correct peer (test harness in session, message deleted
+after). Picker renders James/Abi/System on the real build-13 binary; System seeds
+50 dialogs/235 msgs (env-pinned OCDESKTOP_HERMES_USER=system path; headless click
+on the 3rd modal button wouldn't land under matchbox — coordinate drift, not a
+bug. The James-click callback path was already proven in build 12 QA).
+Shipped build13 AppImage sha 4d911846..., embedded binary 27efffb9... verified ==.
+STALE-BINARY TRAP RECURRED: appimagetool packed the OLD build-12 binary still in
+squashfs-root (sha 24684ee3) on first roll — caught by verify-back (mismatch vs
+fresh 27efffb9), re-copied fresh binary, re-rolled, re-verified ==. ALWAYS cp the
+fresh stripped binary into squashfs-root/usr/bin/ocdesktop BEFORE packing.
+
+## NEXT BUILD (planned, build 14) — embedded browser trio
+James wants: (1) replace the right-panel Info section with an embedded web
+browser, (2) a Hermes tool/MCP to control it (navigate URL), (3) on convo first
+load, scan history for the last URL set and reload it.
+FEASIBILITY (checked): tdesktop ships its OWN webview — Telegram/lib_webview,
+Webview::Window (webview_embed.h) with .navigate(url)/.reload()/.eval(). Uses
+webkit2gtk on Linux → NEEDS A REAL DISPLAY; returns "Could not initialize WebView"
+under headless Xvfb. So the rendered page CANNOT be self-QA'd headless — only the
+panel swap + navigate-command flow are headless-testable; James must eyeball the
+actual render on his box. Build it to degrade gracefully (fallback label, not a
+crash) if webkit is missing.
+ARCH: navigate commands come down the SAME push channel as message.new — add a
+new update kind (e.g. "browser.navigate") the client routes to the webview.
+URL-restore: the Hermes tool's navigate calls get persisted to the session (so
+they show in history); on convo open, scan back for the last one and navigate.
+Info section seam: showSection(Info::Memento) in window_session_controller.cpp —
+that's the panel to replace with the webview widget.
+
 ## ROSTER NOW DYNAMIC (done 2026-06-07, build 12)
 WAS hardcoded in ConnectConfig.h KnownUsers(). NOW: bridge has a `roster` op —
 distinct user_ids derived live from the sessions table (SELECT user_id ... GROUP
