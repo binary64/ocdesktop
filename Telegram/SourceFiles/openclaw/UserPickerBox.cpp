@@ -16,6 +16,7 @@ https://github.com/binary64/ocdesktop/blob/main/LICENSE
 #include "styles/style_settings.h"
 
 #include <rpl/rpl.h>
+#include <crl/crl_on_main.h>
 
 namespace OpenClaw {
 
@@ -58,8 +59,10 @@ void UserPickerBox(
 			button->setFullWidth(width - sidePadding);
 		}, button->lifetime());
 		button->setClickedCallback([=] {
-			chosen(id);
 			box->closeBox();
+			crl::on_main([=] {
+				chosen(id);
+			});
 		});
 	}
 

@@ -516,6 +516,7 @@ void StartConnectFlow(
 			config.user = userId;
 			SeedAndShow(account, config);
 		};
+		LOG(("OpenClaw connect: showing user picker."));
 		window->show(Box(UserPickerBox, QString(), pick));
 	});
 }
