@@ -86,6 +86,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "export/view/export_view_top_bar.h"
 #include "export/view/export_view_panel_controller.h"
 #include "main/main_session.h"
+#include "main/main_account.h"
+#include "openclaw/BrowserSection.h"
 #include "main/main_session_settings.h"
 #include "main/main_app_config.h"
 #include "settings/sections/settings_premium.h"
@@ -2677,6 +2679,12 @@ auto MainWidget::thirdSectionForCurrentMainSection(
 -> std::shared_ptr<Window::SectionMemento> {
 	if (_thirdSectionFromStack) {
 		return std::move(_thirdSectionFromStack);
+	} else if (session().account().offlineSession() && key.peer()) {
+		const auto bare = uint64(key.peer()->id.value);
+		LOG(("OpenClaw browser: thirdSectionForCurrentMainSection -> browser"));
+		return std::make_shared<OpenClaw::BrowserMemento>(
+			bare,
+			OpenClaw::BrowserSection::LastUrlFor(bare));
 	} else if (const auto topic = key.topic()) {
 		return std::make_shared<Info::Memento>(topic);
 	} else if (const auto sublist = key.sublist()

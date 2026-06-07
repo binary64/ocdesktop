@@ -1961,6 +1961,8 @@ PRIVATE
     openclaw/WsClient.h
     openclaw/WsGateway.cpp
     openclaw/WsGateway.h
+    openclaw/BrowserSection.cpp
+    openclaw/BrowserSection.h
     config.h
     logs.cpp
     logs.h

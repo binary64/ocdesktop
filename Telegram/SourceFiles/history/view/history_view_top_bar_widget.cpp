@@ -12,6 +12,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "boxes/add_contact_box.h"
 #include "ui/boxes/confirm_box.h"
 #include "info/info_memento.h"
+#include "openclaw/BrowserSection.h"
+#include "main/main_account.h"
 #include "info/info_controller.h"
 #include "info/profile/info_profile_values.h"
 #include "storage/storage_media_prepare.h"
@@ -442,6 +444,23 @@ void TopBarWidget::toggleInfoSection() {
 		&& (Core::App().settings().thirdSectionInfoEnabled()
 			|| Core::App().settings().tabbedReplacedWithInfo())) {
 		_controller->closeThirdSection();
+	} else if (_activeChat.key.peer()
+		&& _controller->session().account().offlineSession()) {
+		LOG(("OpenClaw browser: toggleInfoSection -> browser path"));
+		const auto peer = _activeChat.key.peer();
+		const auto bare = uint64(peer->id.value);
+		if (_controller->canShowThirdSection() && isThreeColumn) {
+			Core::App().settings().setThirdSectionInfoEnabled(true);
+			Core::App().saveSettingsDelayed();
+			_controller->showSection(
+				std::make_shared<OpenClaw::BrowserMemento>(
+					bare,
+					OpenClaw::BrowserSection::LastUrlFor(bare)),
+				Window::SectionShow().withThirdColumn());
+		} else {
+			_controller->resizeForThirdSection();
+			_controller->updateColumnLayout();
+		}
 	} else if (_activeChat.key.peer()) {
 		if (_controller->canShowThirdSection()) {
 			Core::App().settings().setThirdSectionInfoEnabled(true);
@@ -811,7 +830,22 @@ void TopBarWidget::infoClicked() {
 	const auto key = _activeChat.key;
 	if (!key) {
 		return;
-	} else if (const auto topic = key.topic()) {
+	}
+	LOG(("OpenClaw browser: infoClicked offline=%1 hasPeer=%2"
+		).arg(_controller->session().account().offlineSession()
+		).arg(key.peer() != nullptr));
+	if (key.peer() && _controller->session().account().offlineSession()) {
+		const auto bare = uint64(key.peer()->id.value);
+		_controller->showSection(
+			std::make_shared<OpenClaw::BrowserMemento>(
+				bare,
+				OpenClaw::BrowserSection::LastUrlFor(bare)),
+			_controller->adaptive().isThreeColumn()
+				? Window::SectionShow().withThirdColumn()
+				: Window::SectionShow());
+		return;
+	}
+	if (const auto topic = key.topic()) {
 		_controller->showSection(std::make_shared<Info::Memento>(topic));
 	} else if (const auto sublist = key.sublist()) {
 		_controller->showSection(std::make_shared<Info::Memento>(sublist));
