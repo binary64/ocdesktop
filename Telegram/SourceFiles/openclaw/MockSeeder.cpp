@@ -24,6 +24,8 @@ https://github.com/binary64/ocdesktop/blob/main/LICENSE
 #include "data/data_peer_id.h"
 #include "history/history.h"
 #include "history/history_item.h"
+#include "ui/text/text_entity.h"
+#include "api/api_text_entities.h"
 #include "apiwrap.h"
 #include "logs.h"
 
@@ -89,6 +91,13 @@ constexpr auto kSelfBareId = uint64(1);
 		flags |= Flag::f_out;
 	}
 	const auto date = (msg.date > 0) ? msg.date : TimeId(base::unixtime::now());
+	auto parsed = TextUtilities::ParseEntities(
+		msg.text,
+		TextParseLinks | TextParseMarkdown);
+	const auto entities = Api::EntitiesToMTP(
+		nullptr,
+		parsed.entities,
+		Api::ConvertOption::SkipLocal);
 	return MTP_message(
 		MTP_flags(flags),
 		MTP_int(int(msg.id)),
@@ -103,10 +112,10 @@ constexpr auto kSelfBareId = uint64(1);
 		MTPPeer(), // guestchat_via_from
 		MTPMessageReplyHeader(),
 		MTP_int(date),
-		MTP_string(msg.text),
+		MTP_string(parsed.text),
 		MTP_messageMediaEmpty(),
 		MTPReplyMarkup(),
-		MTPVector<MTPMessageEntity>(),
+		entities,
 		MTPint(), // views
 		MTPint(), // forwards
 		MTPMessageReplies(),
@@ -250,7 +259,9 @@ void ApplyGatewayMessage(
 	auto &data = session->data();
 	const auto peerId = peerFromUser(UserId(msg.peerId));
 	if (const auto existing = data.message(peerId, MsgId(msg.id))) {
-		existing->setText({ msg.text, {} });
+		existing->setText(TextUtilities::ParseEntities(
+			msg.text,
+			TextParseLinks | TextParseMarkdown));
 		data.requestItemTextRefresh(existing);
 		data.notifyItemDataChange(existing);
 		return;
