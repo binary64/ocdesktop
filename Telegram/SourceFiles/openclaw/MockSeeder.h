@@ -32,6 +32,14 @@ class GatewayInterface;
 [[nodiscard]] bool MockModeEnabled();
 [[nodiscard]] bool SeedingEnabled();
 
+// Per-peer metadata registry (source tag + Hermes session id), populated from
+// the bridge's sessions.list/dialog.new peer payloads. The chat header uses it
+// to render "Hermes (source · sessionid)" for the counterparty. Stored in a
+// static map keyed by bare peer id so the top-bar widget can look it up without
+// a gateway handle.
+void RememberPeerMeta(uint64 peerId, const QString &source, const QString &session);
+[[nodiscard]] QString PeerHeaderLabel(uint64 peerId);
+
 // Returns the persistent live gateway created during seeding, or nullptr
 // when no offline/Hermes session is active. The send path uses this to
 // route outgoing text to the WS bridge.

@@ -84,6 +84,12 @@ public:
 	using TypingHandler = std::function<void(PeerId peerId, bool typing)>;
 	void setTypingHandler(TypingHandler handler);
 
+	// New-session push from the bridge ("dialog.new" update kind): a brand-new
+	// Hermes session appeared while connected. Carries the new peer so the
+	// seeder can inject a chat-list row live, without a reconnect.
+	using NewDialogHandler = std::function<void(const GatewayPeer &peer)>;
+	void setNewDialogHandler(NewDialogHandler handler);
+
 	// --- Search ---
 	void searchMessages(PeerId peerId, const QString &query, int limit, GatewayCallback<std::vector<GatewayMessage>> done, ErrorCallback fail) override;
 
@@ -107,6 +113,7 @@ private:
 	AuthState _authState = AuthState::LoggedOut;
 	UpdateHandler _updateHandler;
 	TypingHandler _typingHandler;
+	NewDialogHandler _newDialogHandler;
 	int _requestId = 0;
 
 	bool _authed = false;

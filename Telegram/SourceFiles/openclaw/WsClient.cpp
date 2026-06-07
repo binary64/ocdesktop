@@ -14,6 +14,8 @@ https://github.com/binary64/ocdesktop/blob/main/LICENSE
 #include <QCryptographicHash>
 #include <QUrl>
 #include <QRandomGenerator>
+#include <QTimer>
+#include <iterator>
 
 namespace OpenClaw {
 namespace {
@@ -37,11 +39,21 @@ WsClient::~WsClient() {
 }
 
 void WsClient::open(const QString &url) {
+	_url = url;
+	_deliberateClose = false;
 	const auto parsed = QUrl(url);
 	_host = parsed.host();
 	_path = parsed.path().isEmpty() ? QStringLiteral("/") : parsed.path();
 	_secure = (parsed.scheme().compare(QStringLiteral("wss"), Qt::CaseInsensitive) == 0);
 	_port = parsed.port(_secure ? 443 : 80);
+
+	if (_socket) {
+		_socket->disconnect(this);
+		_socket->abort();
+		_socket->deleteLater();
+		_socket = nullptr;
+	}
+	_buffer.clear();
 
 	_socket = new QSslSocket(this);
 	connect(_socket, &QSslSocket::readyRead, this, &WsClient::onReadyRead);
@@ -116,6 +128,7 @@ void WsClient::processHandshake() {
 		return;
 	}
 	_state = State::Open;
+	_reconnectAttempts = 0;
 	Q_EMIT connected();
 }
 
@@ -215,6 +228,10 @@ void WsClient::sendFrame(quint8 opcode, const QByteArray &payload) {
 }
 
 void WsClient::close() {
+	_deliberateClose = true;
+	if (_reconnectTimer) {
+		_reconnectTimer->stop();
+	}
 	if (_socket && _state == State::Open) {
 		sendFrame(kOpClose, QByteArray());
 	}
@@ -230,12 +247,33 @@ void WsClient::onDisconnected() {
 	}
 }
 
+void WsClient::scheduleReconnect() {
+	if (_deliberateClose || _url.isEmpty()) {
+		return;
+	}
+	if (!_reconnectTimer) {
+		_reconnectTimer = new QTimer(this);
+		_reconnectTimer->setSingleShot(true);
+		connect(_reconnectTimer, &QTimer::timeout, this, [this] {
+			if (!_deliberateClose) {
+				open(_url);
+			}
+		});
+	}
+	const int caps[] = { 1000, 2000, 5000, 10000, 15000, 30000 };
+	const int idx = qMin(_reconnectAttempts, int(std::size(caps)) - 1);
+	const int delay = caps[idx];
+	++_reconnectAttempts;
+	_reconnectTimer->start(delay);
+}
+
 void WsClient::fail(const QString &reason) {
 	if (_state == State::Closed) {
 		return;
 	}
 	_state = State::Closed;
 	Q_EMIT disconnected(reason);
+	scheduleReconnect();
 }
 
 } // namespace OpenClaw

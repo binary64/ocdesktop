@@ -59,15 +59,20 @@ private:
 	void processFrames();
 	void sendFrame(quint8 opcode, const QByteArray &payload);
 	void fail(const QString &reason);
+	void scheduleReconnect();
 
 	QSslSocket *_socket = nullptr;
 	bool _secure = false;
 	State _state = State::Idle;
+	QString _url;
 	QString _host;
 	QString _path;
 	quint16 _port = 80;
 	QByteArray _expectedAccept;
 	QByteArray _buffer;
+	bool _deliberateClose = false;
+	int _reconnectAttempts = 0;
+	class QTimer *_reconnectTimer = nullptr;
 };
 
 } // namespace OpenClaw

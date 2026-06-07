@@ -36,11 +36,18 @@ https://github.com/binary64/ocdesktop/blob/main/LICENSE
 #include <QProcessEnvironment>
 #include <QFile>
 #include <memory>
+#include <map>
 
 namespace OpenClaw {
 namespace {
 
 std::unique_ptr<WsGateway> LiveGateway;
+
+struct PeerMeta {
+	QString source;
+	QString session;
+};
+std::map<uint64, PeerMeta> PeerMetaRegistry;
 
 constexpr auto kSelfBareId = uint64(1);
 
@@ -190,6 +197,31 @@ bool SeedingEnabled() {
 
 GatewayInterface *ActiveGateway() {
 	return LiveGateway.get();
+}
+
+void RememberPeerMeta(uint64 peerId, const QString &source, const QString &session) {
+	if (session.isEmpty() && source.isEmpty()) {
+		return;
+	}
+	PeerMetaRegistry[peerId] = PeerMeta{ source, session };
+}
+
+QString PeerHeaderLabel(uint64 peerId) {
+	const auto it = PeerMetaRegistry.find(peerId);
+	if (it == PeerMetaRegistry.end()) {
+		return u"Hermes"_q;
+	}
+	const auto &meta = it->second;
+	if (meta.session.isEmpty() && meta.source.isEmpty()) {
+		return u"Hermes"_q;
+	}
+	if (meta.source.isEmpty()) {
+		return u"Hermes (%1)"_q.arg(meta.session);
+	}
+	if (meta.session.isEmpty()) {
+		return u"Hermes (%1)"_q.arg(meta.source);
+	}
+	return u"Hermes (%1 · %2)"_q.arg(meta.source).arg(meta.session);
 }
 
 std::optional<MTPmessages_Messages> OfflineHistory(
@@ -353,6 +385,30 @@ void WireUpdateHandler(not_null<Main::Account*> account) {
 				user,
 				action,
 				base::unixtime::now());
+		});
+	});
+	LiveGateway->setNewDialogHandler([weakSession](const GatewayPeer &peer) {
+		crl::on_main([weakSession, peer] {
+			const auto session = weakSession.get();
+			if (!session) {
+				return;
+			}
+			auto &data = session->data();
+			const auto fullPeerId = peerFromUser(UserId(peer.id));
+			if (data.historyLoaded(fullPeerId)) {
+				return;
+			}
+			auto users = QVector<MTPUser>();
+			users.push_back(MakeUser(peer, false));
+			data.processUsers(MTP_vector<MTPUser>(users));
+			GatewayDialog dialog;
+			dialog.peerId = peer.id;
+			dialog.title = peer.name;
+			auto dialogs = QVector<MTPDialog>();
+			dialogs.push_back(MakeDialog(dialog));
+			data.applyDialogs(nullptr, QVector<MTPMessage>(), dialogs);
+			LOG(("OpenClaw: dialog.new injected peer %1 (%2)."
+				).arg(uint64(peer.id)).arg(peer.name));
 		});
 	});
 }

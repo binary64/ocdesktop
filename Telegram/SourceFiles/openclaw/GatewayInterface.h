@@ -51,6 +51,8 @@ struct GatewayPeer {
 	QString username;
 	QString phone;
 	QString about;
+	QString session;
+	QString source;
 	bool isBot = false;
 	bool isGroup = false;
 	bool isChannel = false;
