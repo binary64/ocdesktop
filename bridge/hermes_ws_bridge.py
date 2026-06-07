@@ -267,6 +267,8 @@ class HermesWsBridge:
                 "name": _preview_title(s),
                 "username": (s.get("source") or "hermes"),
                 "about": s.get("preview") or "",
+                "session": sid,
+                "source": (s.get("source") or "hermes"),
                 "isBot": True,
             })
             dialogs.append({
@@ -420,7 +422,14 @@ def build_app(bridge: "HermesWsBridge"):
             land via Telegram, cron, or any proactive path are written to the
             session DB but were never pushed. We watch the DB and emit
             message.new for each, so the open client stays live.
+
+            Every few ticks we also re-list sessions for the current user and
+            push a dialog.new for any session that appeared AFTER the initial
+            sessions.list — so a brand-new conversation surfaces live without
+            a reconnect.
             """
+            rescan_every = 5  # ~10s at a 2s tick
+            tick = 0
             while not ws.closed:
                 try:
                     for peer_id, wm in list(watermarks.items()):
@@ -431,6 +440,21 @@ def build_app(bridge: "HermesWsBridge"):
                                         "peerId": peer_id, "message": m})
                             if m["id"] > watermarks.get(peer_id, 0):
                                 watermarks[peer_id] = m["id"]
+                    tick += 1
+                    if tick % rescan_every == 0:
+                        listing = await loop.run_in_executor(
+                            None, bridge.list_sessions, current_user)
+                        peer_by_id = {int(p["id"]): p
+                                      for p in listing.get("peers", [])}
+                        for d in listing.get("dialogs", []):
+                            pid = int(d["peerId"])
+                            if pid in watermarks:
+                                continue
+                            p = peer_by_id.get(pid, {})
+                            await send({"op": "update", "kind": "dialog.new",
+                                        "peerId": pid, "peer": p,
+                                        "topMessageId": int(d.get("topMessageId") or 0)})
+                            watermarks[pid] = int(d.get("topMessageId") or 0)
                 except Exception:  # noqa: BLE001
                     logger.exception("poll_new_messages tick failed")
                 await asyncio.sleep(2)

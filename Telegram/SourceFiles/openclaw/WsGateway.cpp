@@ -8,6 +8,7 @@ https://github.com/binary64/ocdesktop/blob/main/LICENSE
 #include "openclaw/WsGateway.h"
 #include "openclaw/SentryReporter.h"
 #include "openclaw/BrowserSection.h"
+#include "openclaw/MockSeeder.h"
 
 #include <crl/crl_on_main.h>
 
@@ -128,7 +129,7 @@ void WsGateway::handleResponse(int id, const QJsonObject &obj) {
 	const bool ok = obj.value("ok").toBool();
 	const auto result = obj.value("result").toObject();
 
-	if (!_authed && result.contains("self")) {
+	if (result.contains("self")) {
 		_authed = ok;
 		_authState = ok ? AuthState::Ready : AuthState::LoggedOut;
 		if (ok) {
@@ -175,8 +176,11 @@ void WsGateway::handleResponse(int id, const QJsonObject &obj) {
 			peer.name = o.value("name").toString();
 			peer.username = o.value("username").toString();
 			peer.about = o.value("about").toString();
+			peer.session = o.value("session").toString();
+			peer.source = o.value("source").toString();
 			peer.isBot = o.value("isBot").toBool();
 			_peers.emplace(peer.id, peer);
+			OpenClaw::RememberPeerMeta(uint64(peer.id), peer.source, peer.session);
 		}
 		for (const auto &v : result.value("dialogs").toArray()) {
 			const auto o = v.toObject();
@@ -256,6 +260,31 @@ void WsGateway::handleResponse(int id, const QJsonObject &obj) {
 void WsGateway::handleUpdate(const QJsonObject &obj) {
 	const auto kind = obj.value("kind").toString();
 	const auto peerId = PeerId(obj.value("peerId").toVariant().toULongLong());
+
+	if (kind == "dialog.new") {
+		const auto p = obj.value("peer").toObject();
+		GatewayPeer peer;
+		peer.id = peerId;
+		peer.name = p.value("name").toString();
+		peer.username = p.value("username").toString();
+		peer.about = p.value("about").toString();
+		peer.session = p.value("session").toString();
+		peer.source = p.value("source").toString();
+		peer.isBot = p.value("isBot").toBool();
+		if (_peers.find(peer.id) == _peers.end()) {
+			_peers.emplace(peer.id, peer);
+			GatewayDialog dialog;
+			dialog.peerId = peer.id;
+			dialog.title = peer.name;
+			dialog.topMessageId = MsgId(obj.value("topMessageId").toVariant().toLongLong());
+			_dialogs.insert(_dialogs.begin(), dialog);
+		}
+		OpenClaw::RememberPeerMeta(uint64(peer.id), peer.source, peer.session);
+		if (_newDialogHandler) {
+			_newDialogHandler(peer);
+		}
+		return;
+	}
 
 	if (kind == "browser.navigate") {
 		const auto url = obj.value("url").toString();
@@ -451,6 +480,10 @@ void WsGateway::setUpdateHandler(UpdateHandler handler) {
 
 void WsGateway::setTypingHandler(TypingHandler handler) {
 	_typingHandler = std::move(handler);
+}
+
+void WsGateway::setNewDialogHandler(NewDialogHandler handler) {
+	_newDialogHandler = std::move(handler);
 }
 
 void WsGateway::searchMessages(PeerId peerId, const QString &query, int limit, GatewayCallback<std::vector<GatewayMessage>> done, ErrorCallback fail) {

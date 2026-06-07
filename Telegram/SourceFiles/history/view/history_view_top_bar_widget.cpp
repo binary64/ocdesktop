@@ -13,6 +13,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/boxes/confirm_box.h"
 #include "info/info_memento.h"
 #include "openclaw/BrowserSection.h"
+#include "openclaw/MockSeeder.h"
 #include "main/main_account.h"
 #include "info/info_controller.h"
 #include "info/profile/info_profile_values.h"
@@ -89,7 +90,7 @@ QString TopBarNameText(
 		not_null<PeerData*> peer,
 		const Dialogs::EntryState &state) {
 	if (peer->session().account().offlineSession() && !peer->isSelf()) {
-		return u"Hermes"_q;
+		return OpenClaw::PeerHeaderLabel(uint64(peer->id.value));
 	}
 	if (state.section == Dialogs::EntryState::Section::SavedSublist
 		&& state.key.sublist()
