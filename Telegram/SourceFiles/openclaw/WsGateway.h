@@ -77,6 +77,13 @@ public:
 	// --- Updates Stream ---
 	void setUpdateHandler(UpdateHandler handler) override;
 
+	// Typing/presence push from the bridge ("typing" update kind, plus the
+	// synthesised typing edge from stream.start/message.new). Concrete to
+	// WsGateway so MockGateway needn't stub it. Drives the real send-action
+	// indicator instead of rendering an empty bubble.
+	using TypingHandler = std::function<void(PeerId peerId, bool typing)>;
+	void setTypingHandler(TypingHandler handler);
+
 	// --- Search ---
 	void searchMessages(PeerId peerId, const QString &query, int limit, GatewayCallback<std::vector<GatewayMessage>> done, ErrorCallback fail) override;
 
@@ -99,6 +106,7 @@ private:
 	QString _user;
 	AuthState _authState = AuthState::LoggedOut;
 	UpdateHandler _updateHandler;
+	TypingHandler _typingHandler;
 	int _requestId = 0;
 
 	bool _authed = false;

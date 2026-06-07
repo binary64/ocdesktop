@@ -88,6 +88,9 @@ constexpr auto kEmojiInteractionSeenDuration = 3 * crl::time(1000);
 QString TopBarNameText(
 		not_null<PeerData*> peer,
 		const Dialogs::EntryState &state) {
+	if (peer->session().account().offlineSession() && !peer->isSelf()) {
+		return u"Hermes"_q;
+	}
 	if (state.section == Dialogs::EntryState::Section::SavedSublist
 		&& state.key.sublist()
 		&& state.key.sublist()->owningHistory()->peer->isSelf()) {
