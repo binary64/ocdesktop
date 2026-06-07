@@ -12,6 +12,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "base/qt_signal_producer.h"
 #include "boxes/about_box.h"
 #include "openclaw/OcVersion.h"
+#include "openclaw/MockSeeder.h"
 #include "boxes/peer_list_controllers.h"
 #include "boxes/premium_preview_box.h"
 #include "calls/group/calls_group_common.h"
@@ -745,6 +746,13 @@ void MainMenu::setupMenu() {
 		{ &st::menuIconSettings }
 	)->setClickedCallback([=] {
 		controller->showSettings();
+	});
+
+	addAction(
+		rpl::single(u"Switch user"_q),
+		{ &st::menuIconProfile }
+	)->setClickedCallback([=] {
+		OpenClaw::SwitchUser(&controller->session().account());
 	});
 
 	_nightThemeToggle = addAction(

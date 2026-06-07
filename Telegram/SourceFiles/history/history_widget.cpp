@@ -175,8 +175,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/item_text_options.h"
 #include "main/main_app_config.h"
 #include "main/main_session.h"
+#include "main/main_account.h"
 #include "main/main_session_settings.h"
 #include "main/session/send_as_peers.h"
+#include "openclaw/MockSeeder.h"
 #include "webrtc/webrtc_environment.h"
 #include "window/notifications_manager.h"
 #include "window/window_adaptive.h"
@@ -4299,6 +4301,17 @@ void HistoryWidget::firstLoadMessages() {
 	const auto historyHash = uint64(0);
 
 	const auto history = from;
+	if (history->session().account().offlineSession()) {
+		if (auto offline = OpenClaw::OfflineHistory(history)) {
+			_firstLoadRequest = -1;
+			messagesReceived(history->peer, *offline, _firstLoadRequest);
+			_firstLoadRequest = 0;
+			historyLoaded();
+			injectSponsoredMessages();
+			return;
+		}
+	}
+
 	const auto type = Data::Histories::RequestType::History;
 	auto &histories = history->owner().histories();
 	_firstLoadRequest = histories.sendRequest(history, type, [=](

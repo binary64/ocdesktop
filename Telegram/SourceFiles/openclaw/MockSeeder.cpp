@@ -11,6 +11,7 @@ https://github.com/binary64/ocdesktop/blob/main/LICENSE
 #include "openclaw/WsGateway.h"
 #include "openclaw/ConnectConfig.h"
 #include "openclaw/ConnectBox.h"
+#include "openclaw/UserPickerBox.h"
 #include "core/application.h"
 #include "window/window_controller.h"
 #include "ui/layers/generic_box.h"
@@ -22,6 +23,8 @@ https://github.com/binary64/ocdesktop/blob/main/LICENSE
 #include "data/data_session.h"
 #include "data/data_user.h"
 #include "data/data_peer_id.h"
+#include "data/data_messages.h"
+#include "data/data_history_messages.h"
 #include "history/history.h"
 #include "history/history_item.h"
 #include "ui/text/text_entity.h"
@@ -188,6 +191,41 @@ GatewayInterface *ActiveGateway() {
 	return LiveGateway.get();
 }
 
+std::optional<MTPmessages_Messages> OfflineHistory(
+		not_null<History*> history) {
+	if (!LiveGateway) {
+		return std::nullopt;
+	}
+	const auto peer = history->peer;
+	if (!peer->asUser()) {
+		return std::nullopt;
+	}
+	const auto gatewayPeerId = PeerId(peerToUser(peer->id).bare);
+
+	std::vector<GatewayMessage> cached;
+	LiveGateway->requestHistory(
+		gatewayPeerId,
+		MsgId(0),
+		200,
+		[&](std::vector<GatewayMessage> msgs) { cached = std::move(msgs); },
+		[](const QString &) {});
+
+	auto messages = QVector<MTPMessage>();
+	messages.reserve(int(cached.size()));
+	for (const auto &gm : cached) {
+		if (!IsServerMsgId(::MsgId(gm.id))) {
+			continue;
+		}
+		messages.push_back(MakeMessage(gm));
+	}
+
+	return MTP_messages_messages(
+		MTP_vector<MTPMessage>(messages),
+		MTP_vector<MTPForumTopic>(),
+		MTP_vector<MTPChat>(),
+		MTP_vector<MTPUser>());
+}
+
 template <typename Gateway>
 bool SeedFromGateway(not_null<Main::Account*> account, Gateway &gateway) {
 	auto settings = std::make_unique<Main::SessionSettings>();
@@ -303,7 +341,7 @@ static bool ReattachWithConfig(
 	if (!account->sessionExists() || config.url.isEmpty()) {
 		return false;
 	}
-	LiveGateway = std::make_unique<WsGateway>(config.url, config.token);
+	LiveGateway = std::make_unique<WsGateway>(config.url, config.token, config.user);
 	if (!LiveGateway->bootstrapBlocking()) {
 		LOG(("OpenClaw reattach: WS bootstrap failed for %1").arg(config.url));
 		LiveGateway = nullptr;
@@ -357,7 +395,7 @@ static bool SeedWithConfig(
 		return false;
 	}
 
-	LiveGateway = std::make_unique<WsGateway>(config.url, config.token);
+	LiveGateway = std::make_unique<WsGateway>(config.url, config.token, config.user);
 	if (!LiveGateway->bootstrapBlocking()) {
 		LOG(("OpenClaw seeder: WS bootstrap failed for %1").arg(config.url));
 		LiveGateway = nullptr;
@@ -400,6 +438,19 @@ static void ShowAccountWhenSeeded(not_null<Main::Account*> account) {
 	});
 }
 
+static void SeedAndShow(
+		not_null<Main::Account*> account,
+		const ConnectConfig &config) {
+	if (SeedWithConfig(account, config)) {
+		SaveConnectConfig(config);
+		LOG(("OpenClaw connect: seeded for user %1.").arg(
+			config.user.isEmpty() ? QString("(none)") : config.user));
+		ShowAccountWhenSeeded(account);
+	} else {
+		LOG(("OpenClaw connect: seed failed for user %1.").arg(config.user));
+	}
+}
+
 void StartConnectFlow(
 		not_null<Main::Account*> account,
 		Window::Controller *window) {
@@ -418,38 +469,65 @@ void StartConnectFlow(
 		return;
 	}
 
-	if (resolved.valid() && SeedWithConfig(account, resolved)) {
-		LOG(("OpenClaw connect: seeded from saved/env config."));
-		ShowAccountWhenSeeded(account);
+	// No bridge URL/token yet → the classic connect screen handles that first.
+	if (!resolved.valid()) {
+		if (!window) {
+			LOG(("OpenClaw connect: no window to show ConnectBox; staying on intro."));
+			return;
+		}
+		const auto initial = LoadConnectConfig().valid()
+			? LoadConnectConfig()
+			: ResolveConnectConfig();
+		const auto attempt = [account](
+				ConnectConfig config,
+				Fn<void(ConnectResult)> report) {
+			const auto ok = SeedWithConfig(account, config);
+			if (ok) {
+				SaveConnectConfig(config);
+				ShowAccountWhenSeeded(account);
+				report(ConnectResult::Success);
+			} else {
+				report(ConnectResult::Failed);
+			}
+		};
+		crl::on_main([initial, attempt] {
+			if (const auto window = Core::App().activePrimaryWindow()) {
+				window->show(Box(ConnectBox, initial, attempt));
+			}
+		});
 		return;
 	}
 
-	if (!window) {
-		LOG(("OpenClaw connect: no window to show ConnectBox; staying on intro."));
+	// Bridge is configured. If a user was already chosen, seed straight away;
+	// otherwise show the household picker so each person sees only their chats.
+	if (resolved.hasUser()) {
+		SeedAndShow(account, resolved);
 		return;
 	}
 
-	const auto initial = LoadConnectConfig().valid()
-		? LoadConnectConfig()
-		: ResolveConnectConfig();
-
-	const auto attempt = [account](
-			ConnectConfig config,
-			Fn<void(ConnectResult)> report) {
-		const auto ok = SeedWithConfig(account, config);
-		if (ok) {
-			SaveConnectConfig(config);
-			ShowAccountWhenSeeded(account);
-			report(ConnectResult::Success);
-		} else {
-			report(ConnectResult::Failed);
+	crl::on_main([account, resolved] {
+		const auto window = Core::App().activePrimaryWindow();
+		if (!window) {
+			LOG(("OpenClaw connect: no window for user picker; staying on intro."));
+			return;
 		}
-	};
+		const auto pick = [account, resolved](QString userId) {
+			auto config = resolved;
+			config.user = userId;
+			SeedAndShow(account, config);
+		};
+		window->show(Box(UserPickerBox, QString(), pick));
+	});
+}
 
-	crl::on_main([initial, attempt] {
-		if (const auto window = Core::App().activePrimaryWindow()) {
-			window->show(Box(ConnectBox, initial, attempt));
-		}
+void SwitchUser(not_null<Main::Account*> account) {
+	auto config = ResolveConnectConfig();
+	config.user = QString();
+	SaveConnectConfig(config);
+	LiveGateway = nullptr;
+	account->forcedLogOut();
+	crl::on_main([account] {
+		StartConnectFlow(account, Core::App().activePrimaryWindow());
 	});
 }
 

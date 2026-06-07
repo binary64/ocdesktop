@@ -185,3 +185,26 @@ with CUMULATIVE text (client setText REPLACES, doesn't append) + message.new.
 Build: incremental in centos_env container, workdir = out/ (build.ninja lives in
 out/, NOT out/Release/). `ninja Telegram`, ~2 TUs, minutes. Packaged build5
 AppImage 97MB. Bridge restarted.
+
+## 2026-06-06 (cont.) — Build 6 committed, merged to main, shipped
+- Committed build-5/6 source on feat/hermes-gateway (was dirty/uncommitted — drift risk closed), merged --no-ff into main, pushed to binary64. Repo hygiene: untracked stray .pyc + dist binaries; upstream push stays DISABLED_PULL_ONLY.
+- Bumped kOcBuild 5 -> 6. Fresh app-layer compile in centos_env (-u 0 rootless), 904 objs, exit 0.
+- Packaged build6 AppImage by runtime-prefix(944632)+mksquashfs method (no appimagetool on PATH). Swapped fresh stripped binary into AppDir FIRST, verified markers (OC build %1, "reattached live gateway on relaunch").
+- FIXED stale raw-IP default in BOTH AppRun and bundled hermes.env -> ws://vmi3137202.lobster-bonytongue.ts.net:8770/ocdesktop (raw IP was build3's original connect failure). Token line left byte-untouched.
+- VERIFIED: binary extracted back OUT of finished AppImage SHA == build6 binary (9fc4bac1…). AppImage sha256 7f60952a…, 97MB. bot-api container can read by real path.
+- NOT signed (appimagetool absent) — build5 was signed; offer to sign build6 if publisher prompt matters.
+
+## 2026-06-07 — Build 8: markdown rendering in messages
+
+- James: "do all" (markdown + media + proactive push). Scoped against actual code; shipped markdown only, deferred the other two with honest reasons (below).
+- MARKDOWN (client-only, MockSeeder.cpp): MakeMessage now runs TextUtilities::ParseEntities(text, TextParseLinks|TextParseMarkdown) → Api::EntitiesToMTP(nullptr, …, SkipLocal) for the entities vector + uses parsed.text (strips ** / backticks). ApplyGatewayMessage edit-in-place path (streaming deltas) parses the same way via setText(ParseEntities(...)). EntitiesToMTP safe with null session: it only derefs session for MentionName entities; markdown produces Bold/Italic/Code/Pre/Blockquote/Spoiler/Url/CustomUrl — none need a session. Includes added: ui/text/text_entity.h, api/api_text_entities.h.
+- kOcBuild 7→8. Compile: incremental in tdesktop:centos_env (-u 0 rootless), MockSeeder.cpp.o + window_main_menu.cpp.o + relink, EXIT=0. Binary SHA 11b15822… (NEW vs build7's 18262a73… — confirms markdown code really in it).
+- Packaged via runtime-prefix(944632)+mksquashfs(zstd) swap. Shipped-binary SHA extracted back OUT of finished AppImage == stripped build8 (11b15822…) — no stale-binary trap. Headless smoke (ocd:test): EXIT=124, no MONTH_ERR/abort/assert.
+- dist/OCDesktop-build8-x86_64.AppImage 96,590,328 bytes sha256 48f2c33b48c0… Delivered to James DM via direct curl file:// path (MEDIA: tool chokes on >~? size with "Request Entity Too Large"; curl against self-hosted bot-api works). ok=True size-match.
+- Committed 81d92cfd22 on main, pushed pending? (committed locally; push on next sync). AppImage gitignored.
+- DEFERRED (each its own focused build — NOT crammed in, per James's batch preference):
+  1. MEDIA (inline images/files): tdesktop has NO plain-HTTP image loader — every photo/doc goes through the MTProto DC download API. Rendering bridge images = hooking that download layer to fetch bytes from our WS/HTTP bridge instead of Telegram DCs. Real integration vs coupled code. GatewayMessage has no media fields yet; FileRequest/FileResult structs exist in GatewayInterface.h but unused.
+  2. PROACTIVE PUSH (cron/heartbeat → client unsolicited): bridge only pushes inside the message.send handler; unreadCount hardcoded 0 (bridge line 209 + MakeDialog). Needs (a) bridge push registry of connected sockets, (b) Hermes outbound delivery wired to an "ocdesktop" gateway target (lives OUTSIDE this repo, in gateway/), (c) client unread-badge plumbing.
+
+## OCDesktop "shows old build number" — NOT a bug (06-07)
+- James saw build 7 report "build 6". Root cause: tdesktop is SINGLE-INSTANCE — launching the new AppImage while build 6 still ran just resurfaced the old window; new binary never executed. Fully quit first → build 7 correct. Wasted one forced recompile chasing a phantom stale footer (rebuild produced byte-IDENTICAL binary, proving footer was already right). Logged in skill pitfalls.

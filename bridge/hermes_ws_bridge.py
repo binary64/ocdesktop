@@ -98,7 +98,6 @@ class HermesWsBridge:
         self._session_to_peer: Dict[str, int] = {}
         # Monotonic allocator for live send/stream message ids.
         self._synth_counter = self._SYNTH_ID_BASE
-
     def _next_synth_id(self) -> int:
         self._synth_counter += 1
         if self._synth_counter >= self._INT32_MAX:
@@ -178,13 +177,16 @@ class HermesWsBridge:
         )
 
     # ----- protocol ops -----
-    def list_sessions(self) -> Dict[str, Any]:
+    def list_sessions(self, user: Optional[str] = None) -> Dict[str, Any]:
         db = self._session_db()
         sessions = db.list_sessions_rich(
-            limit=self._session_limit,
+            limit=self._session_limit if not user else 5000,
             exclude_sources=["cron"],
             order_by_last_active=True,
         )
+        if user:
+            sessions = [s for s in sessions if str(s.get("user_id") or "") == str(user)]
+            sessions = sessions[:self._session_limit]
         self._peer_to_session.clear()
         self._session_to_peer.clear()
         last_ids = self._last_message_ids([s["id"] for s in sessions])
@@ -252,6 +254,7 @@ def build_app(bridge: "HermesWsBridge"):
         ws = web.WebSocketResponse(heartbeat=30)
         await ws.prepare(request)
         authed = False
+        current_user = None
         loop = asyncio.get_running_loop()
 
         async def send(obj: Dict[str, Any]) -> None:
@@ -273,6 +276,9 @@ def build_app(bridge: "HermesWsBridge"):
             if op == "auth":
                 if hmac.compare_digest(str(frame.get("token", "")), bridge._token):
                     authed = True
+                    current_user = (str(frame.get("user")).strip()
+                                    if frame.get("user") else None) or None
+                    logger.info("auth ok user=%s", current_user)
                     await send({"id": rid, "ok": True, "protocol": PROTOCOL_VERSION,
                                 "result": {"self": {"id": SELF_PEER_ID, "name": SELF_NAME}}})
                 else:
@@ -286,7 +292,7 @@ def build_app(bridge: "HermesWsBridge"):
 
             try:
                 if op == "sessions.list":
-                    await send({"id": rid, "ok": True, "result": bridge.list_sessions()})
+                    await send({"id": rid, "ok": True, "result": bridge.list_sessions(current_user)})
                 elif op == "history":
                     await send({"id": rid, "ok": True,
                                 "result": bridge.history(int(frame["peerId"]), int(frame.get("limit", 50)))})
@@ -342,7 +348,7 @@ async def _handle_send(bridge, ws, send, loop, frame, rid) -> None:
     # message.new finalises it — all sharing reply_msg_id, no duplicates. Because
     # the client replaces (not appends), we stream the CUMULATIVE text each frame.
     await send({"op": "update", "kind": "typing", "peerId": peer_id, "typing": True})
-    await send({"op": "update", "kind": "stream.start", "peerId": peer_id, "msgId": reply_msg_id})
+    await send({"op": "update", "kind": "stream.start", "peerId": peer_id, "msgId": reply_msg_id, "date": now})
 
     acc = {"text": ""}
 
