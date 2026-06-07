@@ -21,6 +21,7 @@ https://github.com/binary64/ocdesktop/blob/main/LICENSE
 #include "base/weak_ptr.h"
 #include "base/unixtime.h"
 #include "data/data_session.h"
+#include "data/data_send_action.h"
 #include "data/data_user.h"
 #include "data/data_peer_id.h"
 #include "data/data_messages.h"
@@ -325,6 +326,33 @@ void WireUpdateHandler(not_null<Main::Account*> account) {
 				return;
 			}
 			ApplyGatewayMessage(session, msg);
+		});
+	});
+	LiveGateway->setTypingHandler([weakSession](PeerId peerId, bool typing) {
+		crl::on_main([weakSession, peerId, typing] {
+			const auto session = weakSession.get();
+			if (!session) {
+				return;
+			}
+			auto &data = session->data();
+			const auto fullPeerId = peerFromUser(UserId(peerId));
+			const auto history = data.historyLoaded(fullPeerId);
+			if (!history) {
+				return;
+			}
+			const auto user = history->peer->asUser();
+			if (!user) {
+				return;
+			}
+			const auto action = typing
+				? MTPsendMessageAction(MTP_sendMessageTypingAction())
+				: MTPsendMessageAction(MTP_sendMessageCancelAction());
+			data.sendActionManager().registerFor(
+				history,
+				MsgId(0),
+				user,
+				action,
+				base::unixtime::now());
 		});
 	});
 }

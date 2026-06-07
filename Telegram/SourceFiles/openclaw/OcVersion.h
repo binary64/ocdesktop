@@ -14,7 +14,7 @@ namespace OpenClaw {
 // OCDesktop fork build number. Bump this on every shipped build so the
 // in-app footer reflects whether the user is on the latest fork build,
 // independently of the upstream Telegram Desktop version it tracks.
-inline constexpr int kOcBuild = 14;
+inline constexpr int kOcBuild = 15;
 
 [[nodiscard]] inline QString OcVersionText() {
 	return u"OC build %1"_q.arg(kOcBuild);

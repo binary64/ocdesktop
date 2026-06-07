@@ -265,13 +265,38 @@ void WsGateway::handleUpdate(const QJsonObject &obj) {
 		return;
 	}
 
-	if (kind == "stream.delta" || kind == "stream.start") {
+	if (kind == "typing") {
+		const auto typing = obj.value("typing").toBool();
+		if (_typingHandler) {
+			_typingHandler(peerId, typing);
+		}
+		return;
+	}
+
+	if (kind == "stream.start") {
+		if (_typingHandler) {
+			_typingHandler(peerId, true);
+		}
+		return;
+	}
+
+	if (kind == "stream.delta") {
+		const auto text = obj.value("text").toString();
+		if (text.isEmpty()) {
+			if (_typingHandler) {
+				_typingHandler(peerId, true);
+			}
+			return;
+		}
 		const auto msgId = MsgId(obj.value("msgId").toVariant().toLongLong());
 		GatewayMessage msg;
 		msg.id = msgId;
 		msg.peerId = peerId;
 		msg.fromId = peerId;
-		msg.text = obj.value("text").toString();
+		msg.text = text;
+		if (_typingHandler) {
+			_typingHandler(peerId, false);
+		}
 		if (_updateHandler) {
 			_updateHandler(msg);
 		}
@@ -283,6 +308,12 @@ void WsGateway::handleUpdate(const QJsonObject &obj) {
 		msg.fromId = PeerId(m.value("fromId").toVariant().toULongLong());
 		msg.text = m.value("text").toString();
 		msg.date = TimeId(m.value("date").toVariant().toLongLong());
+		if (_typingHandler) {
+			_typingHandler(peerId, false);
+		}
+		if (msg.text.isEmpty()) {
+			return;
+		}
 		_history[peerId].push_back(msg);
 		if (_updateHandler) {
 			_updateHandler(msg);
@@ -416,6 +447,10 @@ void WsGateway::downloadFile(const FileRequest &request, GatewayCallback<FileRes
 
 void WsGateway::setUpdateHandler(UpdateHandler handler) {
 	_updateHandler = std::move(handler);
+}
+
+void WsGateway::setTypingHandler(TypingHandler handler) {
+	_typingHandler = std::move(handler);
 }
 
 void WsGateway::searchMessages(PeerId peerId, const QString &query, int limit, GatewayCallback<std::vector<GatewayMessage>> done, ErrorCallback fail) {
