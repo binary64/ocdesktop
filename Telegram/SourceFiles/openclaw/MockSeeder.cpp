@@ -511,13 +511,30 @@ void StartConnectFlow(
 			LOG(("OpenClaw connect: no window for user picker; staying on intro."));
 			return;
 		}
+
+		auto members = std::vector<KnownUser>();
+		{
+			auto probe = std::make_unique<WsGateway>(
+				resolved.url, resolved.token);
+			if (probe->fetchRosterBlocking()) {
+				members = probe->roster();
+			}
+		}
+		if (members.empty()) {
+			members = KnownUsers();
+			LOG(("OpenClaw connect: roster fetch empty; using static fallback."));
+		} else {
+			LOG(("OpenClaw connect: fetched %1 roster members from bridge."
+				).arg(int(members.size())));
+		}
+
 		const auto pick = [account, resolved](QString userId) {
 			auto config = resolved;
 			config.user = userId;
 			SeedAndShow(account, config);
 		};
 		LOG(("OpenClaw connect: showing user picker."));
-		window->show(Box(UserPickerBox, QString(), pick));
+		window->show(Box(UserPickerBox, members, QString(), pick));
 	});
 }
 

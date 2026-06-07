@@ -9,6 +9,7 @@ https://github.com/binary64/ocdesktop/blob/main/LICENSE
 
 #include "openclaw/GatewayInterface.h"
 #include "openclaw/WsClient.h"
+#include "openclaw/ConnectConfig.h"
 
 #include <QObject>
 #include <QJsonObject>
@@ -38,6 +39,13 @@ public:
 	// histories have landed (or timeout). Lets the synchronous seeder
 	// pull a fully-populated snapshot. Returns false on failure.
 	bool bootstrapBlocking(int timeoutMs = 15000);
+
+	// Lightweight one-shot: auth then fetch the household roster (the bridge's
+	// live list of user_ids + display names derived from real session data),
+	// WITHOUT pulling sessions/histories. Used to populate the picker before a
+	// user is chosen, so the member list is never hardcoded in the client.
+	bool fetchRosterBlocking(int timeoutMs = 8000);
+	[[nodiscard]] const std::vector<KnownUser> &roster() const { return _roster; }
 
 	// --- Auth ---
 	[[nodiscard]] AuthState authState() const override;
@@ -95,7 +103,11 @@ private:
 
 	bool _authed = false;
 	bool _gotSessions = false;
+	bool _rosterOnly = false;
+	bool _gotRoster = false;
 	int _pendingHistories = 0;
+
+	std::vector<KnownUser> _roster;
 
 	std::vector<GatewayDialog> _dialogs;
 	std::unordered_map<PeerId, GatewayPeer> _peers;

@@ -83,6 +83,31 @@ bool WsGateway::bootstrapBlocking(int timeoutMs) {
 	return _authed && _gotSessions;
 }
 
+bool WsGateway::fetchRosterBlocking(int timeoutMs) {
+	_rosterOnly = true;
+	QEventLoop loop;
+	QElapsedTimer clock;
+	clock.start();
+
+	QTimer poll;
+	poll.setInterval(50);
+	connect(&poll, &QTimer::timeout, &loop, [&]() {
+		if (_authed && _gotRoster) {
+			loop.quit();
+		} else if (clock.elapsed() > timeoutMs) {
+			loop.quit();
+		} else if (_authState == AuthState::LoggedOut && clock.elapsed() > 1000) {
+			loop.quit();
+		}
+	});
+	poll.start();
+
+	_ws->open(_url);
+	loop.exec();
+
+	return _authed && _gotRoster;
+}
+
 void WsGateway::onTextMessage(const QString &raw) {
 	const auto doc = QJsonDocument::fromJson(raw.toUtf8());
 	if (!doc.isObject()) {
@@ -105,13 +130,35 @@ void WsGateway::handleResponse(int id, const QJsonObject &obj) {
 		_authState = ok ? AuthState::Ready : AuthState::LoggedOut;
 		if (ok) {
 			Sentry::addBreadcrumb(QStringLiteral("ws"), QStringLiteral("auth ok"));
-			send(QJsonObject{ { "id", nextRequestId() }, { "op", "sessions.list" } });
+			if (_rosterOnly) {
+				send(QJsonObject{ { "id", nextRequestId() }, { "op", "roster" } });
+			} else {
+				send(QJsonObject{ { "id", nextRequestId() }, { "op", "sessions.list" } });
+			}
 		} else {
 			Sentry::captureException(
 				QStringLiteral("WsAuthFailed"),
 				QStringLiteral("gateway auth rejected: ")
 					+ obj.value("error").toString());
 		}
+		return;
+	}
+
+	if (result.contains("users") && !result.contains("dialogs")) {
+		_roster.clear();
+		for (const auto &v : result.value("users").toArray()) {
+			const auto o = v.toObject();
+			KnownUser u;
+			u.id = o.value("id").toVariant().toString();
+			u.label = o.value("label").toString();
+			if (u.label.isEmpty()) {
+				u.label = u.id;
+			}
+			if (!u.id.isEmpty()) {
+				_roster.push_back(u);
+			}
+		}
+		_gotRoster = true;
 		return;
 	}
 
