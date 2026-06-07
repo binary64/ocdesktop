@@ -43,6 +43,7 @@ struct KnownUser {
 	return {
 		{ u"7267310819"_q, u"James"_q },
 		{ u"8462750275"_q, u"Abi"_q },
+		{ u"system"_q, u"System"_q },
 	};
 }
 

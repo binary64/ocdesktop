@@ -219,6 +219,21 @@ class HermesWsBridge:
                 "label": self._roster_names.get(uid, uid),
                 "sessions": int(r[1] or 0),
             })
+        # Synthetic "System" member: everything that isn't a named household
+        # member (legacy NULL-user sessions + any unnamed user_id). Lets the
+        # picker expose a third button for non-James/non-Abi sessions.
+        named_ids = set(self._roster_names.keys())
+        sys_count = db._conn.execute(
+            "SELECT COUNT(*) FROM sessions WHERE source != 'cron' AND "
+            "(user_id IS NULL OR user_id = '' OR user_id NOT IN ({}))".format(
+                ",".join("?" * len(named_ids)) or "''"),
+            list(named_ids),
+        ).fetchone()
+        users.append({
+            "id": "system",
+            "label": "System",
+            "sessions": int((sys_count or [0])[0] or 0),
+        })
         return {"users": users}
 
     def list_sessions(self, user: Optional[str] = None) -> Dict[str, Any]:
@@ -228,7 +243,12 @@ class HermesWsBridge:
             exclude_sources=["cron"],
             order_by_last_active=True,
         )
-        if user:
+        if user == "system":
+            named = set(self._roster_names.keys())
+            sessions = [s for s in sessions
+                        if str(s.get("user_id") or "") not in named]
+            sessions = sessions[:self._session_limit]
+        elif user:
             sessions = [s for s in sessions if str(s.get("user_id") or "") == str(user)]
             sessions = sessions[:self._session_limit]
         self._peer_to_session.clear()
@@ -287,6 +307,43 @@ class HermesWsBridge:
             out = out[-limit:]
         return {"messages": out}
 
+    def messages_after(self, peer_id: int, after_id: int) -> List[Dict[str, Any]]:
+        """User/assistant messages for a peer with id > after_id, oldest-first.
+
+        Source-agnostic: reads straight from the session DB, so it catches
+        replies that arrived via Telegram, cron, or any proactive path — not
+        just turns initiated through this bridge. Drives the live-push poller.
+        """
+        sid = self._peer_to_session.get(peer_id)
+        if sid is None:
+            return []
+        db = self._session_db()
+        rows = db.get_messages(sid)
+        out: List[Dict[str, Any]] = []
+        for row in rows:
+            mid = int(row.get("id", 0))
+            if mid <= after_id:
+                continue
+            role = row.get("role")
+            if role not in ("user", "assistant"):
+                continue
+            content = row.get("content")
+            if isinstance(content, list):
+                content = " ".join(
+                    p.get("text", "") for p in content if isinstance(p, dict)
+                )
+            if not content:
+                continue
+            out.append({
+                "id": mid,
+                "peerId": peer_id,
+                "fromId": SELF_PEER_ID if role == "user" else peer_id,
+                "text": str(content),
+                "date": int(row.get("created_at") or row.get("timestamp") or 0) or int(time.time()),
+            })
+        out.sort(key=lambda m: m["id"])
+        return out
+
 
 # ----------------------------------------------------------------------
 # aiohttp WebSocket server
@@ -301,8 +358,36 @@ def build_app(bridge: "HermesWsBridge"):
         current_user = None
         loop = asyncio.get_running_loop()
 
+        # Per-peer high-water mark of the last message id pushed to THIS client.
+        # Seeded from sessions.list, advanced by both the live poller and the
+        # send path so a message is never pushed twice.
+        watermarks: Dict[int, int] = {}
+        poller_task = None
+
         async def send(obj: Dict[str, Any]) -> None:
             await ws.send_str(json.dumps(obj))
+
+        async def poll_new_messages() -> None:
+            """Push DB messages that appear after the watermark, any source.
+
+            This is the fix for 'incoming messages don't show': replies that
+            land via Telegram, cron, or any proactive path are written to the
+            session DB but were never pushed. We watch the DB and emit
+            message.new for each, so the open client stays live.
+            """
+            while not ws.closed:
+                try:
+                    for peer_id, wm in list(watermarks.items()):
+                        fresh = await loop.run_in_executor(
+                            None, bridge.messages_after, peer_id, wm)
+                        for m in fresh:
+                            await send({"op": "update", "kind": "message.new",
+                                        "peerId": peer_id, "message": m})
+                            if m["id"] > watermarks.get(peer_id, 0):
+                                watermarks[peer_id] = m["id"]
+                except Exception:  # noqa: BLE001
+                    logger.exception("poll_new_messages tick failed")
+                await asyncio.sleep(2)
 
         async for msg in ws:
             if msg.type != WSMsgType.TEXT:
@@ -338,12 +423,17 @@ def build_app(bridge: "HermesWsBridge"):
                 if op == "roster":
                     await send({"id": rid, "ok": True, "result": bridge.roster()})
                 elif op == "sessions.list":
-                    await send({"id": rid, "ok": True, "result": bridge.list_sessions(current_user)})
+                    result = bridge.list_sessions(current_user)
+                    for d in result.get("dialogs", []):
+                        watermarks[int(d["peerId"])] = int(d.get("topMessageId") or 0)
+                    await send({"id": rid, "ok": True, "result": result})
+                    if poller_task is None:
+                        poller_task = asyncio.create_task(poll_new_messages())
                 elif op == "history":
                     await send({"id": rid, "ok": True,
                                 "result": bridge.history(int(frame["peerId"]), int(frame.get("limit", 50)))})
                 elif op == "message.send":
-                    await _handle_send(bridge, ws, send, loop, frame, rid)
+                    await _handle_send(bridge, ws, send, loop, frame, rid, watermarks)
                 elif op == "typing":
                     pass  # client-driven typing is a no-op server-side for now
                 elif op == "peer.full":
@@ -358,6 +448,8 @@ def build_app(bridge: "HermesWsBridge"):
                 logger.exception("op %s failed", op)
                 await send({"id": rid, "ok": False, "error": f"internal: {e}"})
 
+        if poller_task is not None:
+            poller_task.cancel()
         return ws
 
     async def health_handler(request: "web.Request") -> "web.Response":
@@ -369,7 +461,7 @@ def build_app(bridge: "HermesWsBridge"):
     return app
 
 
-async def _handle_send(bridge, ws, send, loop, frame, rid) -> None:
+async def _handle_send(bridge, ws, send, loop, frame, rid, watermarks=None) -> None:
     """message.send → ack the user turn, then stream the assistant reply."""
     peer_id = int(frame["peerId"])
     text = str(frame.get("text", ""))
@@ -434,6 +526,18 @@ async def _handle_send(bridge, ws, send, loop, frame, rid) -> None:
         "text": final_text, "date": int(time.time()),
     }})
     await send({"op": "update", "kind": "typing", "peerId": peer_id, "typing": False})
+
+    # The agent persisted this turn to the DB under REAL ids. We already streamed
+    # it via synthetic ids, so jump the watermark past the DB max to stop the
+    # live poller re-pushing the same turn as duplicate bubbles.
+    if watermarks is not None:
+        try:
+            persisted = await loop.run_in_executor(
+                None, bridge.messages_after, peer_id, watermarks.get(peer_id, 0))
+            if persisted:
+                watermarks[peer_id] = max(m["id"] for m in persisted)
+        except Exception:  # noqa: BLE001
+            logger.exception("watermark advance failed for peerId=%s", peer_id)
 
 
 def main() -> None:
