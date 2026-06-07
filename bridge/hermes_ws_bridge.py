@@ -25,6 +25,7 @@ import hmac
 import json
 import logging
 import os
+import re
 import time
 import uuid
 from typing import Any, Dict, List, Optional
@@ -305,7 +306,7 @@ class HermesWsBridge:
             })
         if limit and len(out) > limit:
             out = out[-limit:]
-        return {"messages": out}
+        return {"messages": out, "lastBrowserUrl": _scan_last_url(out)}
 
     def messages_after(self, peer_id: int, after_id: int) -> List[Dict[str, Any]]:
         """User/assistant messages for a peer with id > after_id, oldest-first.
@@ -348,6 +349,50 @@ class HermesWsBridge:
 # ----------------------------------------------------------------------
 # aiohttp WebSocket server
 # ----------------------------------------------------------------------
+
+# Live connections registry: lets a `browser` op (sent by an external Hermes
+# tool connecting as a ws client) fan a navigate command out to the desktop
+# client(s). Each entry: {"user": str|None, "send": coro, "ws": ws}.
+CONNECTIONS: "list[Dict[str, Any]]" = []
+
+
+async def _broadcast_browser_navigate(peer_id: int, url: str,
+                                      user: "str|None" = None,
+                                      exclude=None) -> int:
+    """Push browser.navigate to every live client (optionally user-scoped).
+
+    Returns the number of clients the command was delivered to. The sending
+    connection (exclude) is skipped so a control tool doesn't get its own push.
+    """
+    delivered = 0
+    for conn in list(CONNECTIONS):
+        if exclude is not None and conn is exclude:
+            continue
+        if user is not None and conn.get("user") not in (None, user):
+            continue
+        try:
+            await conn["send"]({"op": "update", "kind": "browser.navigate",
+                                "peerId": int(peer_id), "url": str(url)})
+            delivered += 1
+        except Exception:  # noqa: BLE001
+            logger.exception("browser.navigate push failed")
+    return delivered
+
+
+def _scan_last_url(messages: "List[Dict[str, Any]]") -> str:
+    """Return the most recent http(s) URL mentioned in a message list.
+
+    Used so opening a conversation restores the embedded browser to the last
+    URL the agent/user referenced there. Newest message wins.
+    """
+    pattern = re.compile(r"https?://[^\s<>\"')\]]+")
+    for m in reversed(messages):
+        found = pattern.findall(str(m.get("text", "")))
+        if found:
+            return found[-1].rstrip(".,;")
+    return ""
+
+
 def build_app(bridge: "HermesWsBridge"):
     from aiohttp import web, WSMsgType
 
@@ -363,6 +408,7 @@ def build_app(bridge: "HermesWsBridge"):
         # send path so a message is never pushed twice.
         watermarks: Dict[int, int] = {}
         poller_task = None
+        conn_entry: "Dict[str, Any]|None" = None
 
         async def send(obj: Dict[str, Any]) -> None:
             await ws.send_str(json.dumps(obj))
@@ -408,6 +454,8 @@ def build_app(bridge: "HermesWsBridge"):
                     current_user = (str(frame.get("user")).strip()
                                     if frame.get("user") else None) or None
                     logger.info("auth ok user=%s", current_user)
+                    conn_entry = {"user": current_user, "send": send, "ws": ws}
+                    CONNECTIONS.append(conn_entry)
                     await send({"id": rid, "ok": True, "protocol": PROTOCOL_VERSION,
                                 "result": {"self": {"id": SELF_PEER_ID, "name": SELF_NAME}}})
                 else:
@@ -436,6 +484,22 @@ def build_app(bridge: "HermesWsBridge"):
                     await _handle_send(bridge, ws, send, loop, frame, rid, watermarks)
                 elif op == "typing":
                     pass  # client-driven typing is a no-op server-side for now
+                elif op == "browser":
+                    peer_id = frame.get("peerId")
+                    if peer_id is None and frame.get("session"):
+                        for pid, sid in bridge._peer_to_session.items():
+                            if sid == frame.get("session"):
+                                peer_id = pid
+                                break
+                    if peer_id is None:
+                        await send({"id": rid, "ok": False,
+                                    "error": "peerId or known session required"})
+                    else:
+                        n = await _broadcast_browser_navigate(
+                            int(peer_id), str(frame.get("url", "")),
+                            frame.get("user"), exclude=conn_entry)
+                        await send({"id": rid, "ok": True,
+                                    "result": {"delivered": n}})
                 elif op == "peer.full":
                     sid = bridge._peer_to_session.get(int(frame["peerId"]))
                     await send({"id": rid, "ok": bool(sid),
@@ -450,6 +514,8 @@ def build_app(bridge: "HermesWsBridge"):
 
         if poller_task is not None:
             poller_task.cancel()
+        if conn_entry is not None and conn_entry in CONNECTIONS:
+            CONNECTIONS.remove(conn_entry)
         return ws
 
     async def health_handler(request: "web.Request") -> "web.Response":

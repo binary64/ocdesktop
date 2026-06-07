@@ -7,6 +7,9 @@ https://github.com/binary64/ocdesktop/blob/main/LICENSE
 */
 #include "openclaw/WsGateway.h"
 #include "openclaw/SentryReporter.h"
+#include "openclaw/BrowserSection.h"
+
+#include <crl/crl_on_main.h>
 
 #include <QJsonDocument>
 #include <QJsonArray>
@@ -218,6 +221,12 @@ void WsGateway::handleResponse(int id, const QJsonObject &obj) {
 			msgs.push_back(msg);
 		}
 		_history[peerId] = msgs;
+		const auto lastUrl = result.value("lastBrowserUrl").toString();
+		if (!lastUrl.isEmpty()) {
+			OpenClaw::BrowserSection::RememberUrl(
+				uint64(peerId),
+				lastUrl);
+		}
 		if (_pendingHistories > 0) {
 			--_pendingHistories;
 		}
@@ -247,6 +256,14 @@ void WsGateway::handleResponse(int id, const QJsonObject &obj) {
 void WsGateway::handleUpdate(const QJsonObject &obj) {
 	const auto kind = obj.value("kind").toString();
 	const auto peerId = PeerId(obj.value("peerId").toVariant().toULongLong());
+
+	if (kind == "browser.navigate") {
+		const auto url = obj.value("url").toString();
+		crl::on_main([peerId, url] {
+			OpenClaw::BrowserSection::NavigatePeer(uint64(peerId), url);
+		});
+		return;
+	}
 
 	if (kind == "stream.delta" || kind == "stream.start") {
 		const auto msgId = MsgId(obj.value("msgId").toVariant().toLongLong());

@@ -1,4 +1,26 @@
 
+## 2026-06-07 — build 14: embedded browser in third column (the browser trio)
+WHAT: right-hand Info column → embedded lib_webview browser on gateway (offline)
+  sessions. New files Telegram/SourceFiles/openclaw/BrowserSection.{h,cpp}
+  (SectionWidget + URL bar + Webview::Window, static registry + LastUrlFor).
+  Bridge `browser` op + per-conn registry pushes browser.navigate to the live
+  client; WsGateway consumes it → BrowserSection::NavigatePeer. URL-restore:
+  bridge history() scans msgs for last URL → client remembers per peer.
+KEY SEAM LESSON (cost the QA loop): intercepting the two TopBar click paths
+  (toggleInfoSection + infoClicked) is NOT enough. The third section also gets
+  built on STARTUP RESTORE and chat-switch via the central factory
+  MainWidget::thirdSectionForCurrentMainSection() — that path bypasses clicks
+  and silently rebuilt Info. FIX: branch there first: if offlineSession() &&
+  key.peer() → return BrowserMemento. This one seam covers restore + switch +
+  fast-switch. Needs #include main/main_account.h + openclaw/BrowserSection.h
+  in mainwidget.cpp. QA proof line: LOG "thirdSectionForCurrentMainSection -> browser".
+HEADLESS LIMIT (expected, not a bug): webkit2gtk paints blank in Xvfb (no GPU);
+  URL bar + section instantiation + column swap DO render → that's the QA proof.
+  Real paint only verifiable on James's display.
+BUILD: incremental relink via ./ocbuild.sh (docker tdesktop:centos_env, -u 0,
+  mount repo at /usr/src/tdesktop, `cmake --build out --target Telegram`).
+  Adding new TUs triggers a one-time CMake reconfigure; after that it's ~3 TUs+link.
+
 ## 2026-06-06 — AppImage packaging trap (build 5 signing)
 SYMPTOM: signed AppImage launched into stock Telegram phone-login (no gateway).
 CAUSE: re-signed from squashfs-root/ WITHOUT copying the freshly-built binary in.
