@@ -93,6 +93,12 @@ class HermesWsBridge:
         self._token = token
         self._session_limit = session_limit
         self._db = None
+        # Optional id->display-name overrides for the household picker, parsed
+        # from the OCDESKTOP_ROSTER env ("id:Name,id:Name"). Names that aren't
+        # listed fall back to the raw user_id, so the client never hardcodes
+        # who the members are — adding a person is one env edit, no rebuild.
+        self._roster_names = self._parse_roster_names(
+            os.environ.get("OCDESKTOP_ROSTER", ""))
         # peerId -> session_id, rebuilt on every sessions.list
         self._peer_to_session: Dict[int, str] = {}
         self._session_to_peer: Dict[str, int] = {}
@@ -177,6 +183,44 @@ class HermesWsBridge:
         )
 
     # ----- protocol ops -----
+    @staticmethod
+    def _parse_roster_names(raw: str) -> Dict[str, str]:
+        names: Dict[str, str] = {}
+        for part in (raw or "").split(","):
+            part = part.strip()
+            if not part or ":" not in part:
+                continue
+            uid, _, label = part.partition(":")
+            uid, label = uid.strip(), label.strip()
+            if uid and label:
+                names[uid] = label
+        return names
+
+    def roster(self) -> Dict[str, Any]:
+        """Distinct household members derived from real session data.
+
+        IDs come live from the sessions table (whoever actually has chats);
+        display names come from the OCDESKTOP_ROSTER env override, falling back
+        to the raw id. Nothing about who the members are is hardcoded in the
+        client — adding/removing a person needs no rebuild, just data + one
+        optional env line for the friendly name.
+        """
+        db = self._session_db()
+        rows = db._conn.execute(
+            "SELECT user_id, COUNT(*) AS n FROM sessions "
+            "WHERE source != 'cron' AND user_id IS NOT NULL AND user_id != '' "
+            "GROUP BY user_id ORDER BY n DESC"
+        ).fetchall()
+        users: List[Dict[str, Any]] = []
+        for r in rows:
+            uid = str(r[0])
+            users.append({
+                "id": uid,
+                "label": self._roster_names.get(uid, uid),
+                "sessions": int(r[1] or 0),
+            })
+        return {"users": users}
+
     def list_sessions(self, user: Optional[str] = None) -> Dict[str, Any]:
         db = self._session_db()
         sessions = db.list_sessions_rich(
@@ -291,7 +335,9 @@ def build_app(bridge: "HermesWsBridge"):
                 continue
 
             try:
-                if op == "sessions.list":
+                if op == "roster":
+                    await send({"id": rid, "ok": True, "result": bridge.roster()})
+                elif op == "sessions.list":
                     await send({"id": rid, "ok": True, "result": bridge.list_sessions(current_user)})
                 elif op == "history":
                     await send({"id": rid, "ok": True,

@@ -22,6 +22,7 @@ namespace OpenClaw {
 
 void UserPickerBox(
 		not_null<Ui::GenericBox*> box,
+		std::vector<KnownUser> members,
 		const QString &current,
 		Fn<void(QString userId)> chosen) {
 	box->setTitle(rpl::single(QString("Welcome to OCDesktop")));
@@ -38,7 +39,7 @@ void UserPickerBox(
 
 	const auto sidePadding = st::boxRowPadding.left()
 		+ st::boxRowPadding.right();
-	for (const auto &user : KnownUsers()) {
+	for (const auto &user : members) {
 		const auto id = user.id;
 		auto title = user.label;
 		if (id == current) {

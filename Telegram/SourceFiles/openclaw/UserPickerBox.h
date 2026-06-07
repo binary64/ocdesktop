@@ -8,8 +8,10 @@ https://github.com/binary64/ocdesktop/blob/main/LICENSE
 #pragma once
 
 #include "base/object_ptr.h"
+#include "openclaw/ConnectConfig.h"
 
 #include <QString>
+#include <vector>
 
 namespace Ui {
 class GenericBox;
@@ -24,6 +26,7 @@ namespace OpenClaw {
 // it's a shared home machine.
 void UserPickerBox(
 	not_null<Ui::GenericBox*> box,
+	std::vector<KnownUser> members,
 	const QString &current,
 	Fn<void(QString userId)> chosen);
 
