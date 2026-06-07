@@ -10,6 +10,28 @@ FIX/RULE: after every `ninja Telegram`, BEFORE signing:
   4. VERIFY EMBEDDED: extract usr/bin/ocdesktop back out of finished AppImage,
      sha256 must match the freshly-stripped binary. NEVER trust the AppDir blindly.
 
+## SHIP GATE (standing rule from James, 2026-06-07)
+QA the full REAL path yourself before sending any AppImage — headless drive,
+wait for the picker, click the actual button, verify seed logs + screenshots +
+app-still-alive. Only send when QA passes. James accepts skipped build numbers:
+a number he never receives = a build that failed QA and was rebuilt, not shipped.
+Never ship on assumption (build 10 shipped a crash because QA bypassed the click
+path via an env-var shortcut — don't repeat that).
+
+## ROSTER NOW DYNAMIC (done 2026-06-07, build 12)
+WAS hardcoded in ConnectConfig.h KnownUsers(). NOW: bridge has a `roster` op —
+distinct user_ids derived live from the sessions table (SELECT user_id ... GROUP
+BY), display names from the OCDESKTOP_ROSTER env ("id:Name,id:Name", set in
+~/.hermes/ocdesktop-ws.env), fallback to raw id. Client: WsGateway::
+fetchRosterBlocking() does a lightweight auth+roster WS round-trip; StartConnectFlow
+fetches it before showing the picker and passes the list to UserPickerBox(members,
+...). KnownUsers() kept ONLY as offline fallback when the fetch fails/returns empty.
+Adding a 3rd member = one OCDESKTOP_ROSTER env line + restart ocdesktop-ws, NO
+client rebuild. Bridge change is hot (service runs from repo file).
+QA'd headless: "fetched 2 roster members from bridge" → picker James/Abi → click
+seeded user 7267310819 clean (docs/build12-*.png). Shipped build12 AppImage
+sha d3e0e3e7..., embedded binary sha 24684ee3... verified ==.
+
 ## 2026-06-07 — build 11: click-James crash (use-after-free in picker callback)
 SYMPTOM: clicking James/Abi in the picker did "nothing" — app crashed (SIGSEGV)
   or fell back to the stock Telegram intro screen. Reproduced headless: click →
