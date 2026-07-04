@@ -21,7 +21,7 @@
   ],
   "history": {
     "101": [
-      { "id": 1001, "fromId": 101, "text": "Morning, James. Main is a clean upstream mirror and PR #5 (the Hermes gateway) is up.", "date": 1717480800 },
+      { "id": 1001, "fromId": 101, "text": "Morning, Alice. Main is a clean upstream mirror and PR #5 (the Hermes gateway) is up.", "date": 1717480800 },
       { "id": 1002, "fromId": 1,   "text": "nice. how's the mock coming?", "date": 1717480860 },
       { "id": 1003, "fromId": 101, "text": "This conversation you're reading IS the mock — every message here is loaded from mock.json. No Telegram servers involved.", "date": 1717480920 },
       { "id": 1004, "fromId": 101, "text": "Each chat in the sidebar is a Hermes session. Sending a message will eventually post a turn into that session.", "date": 1717480980 }

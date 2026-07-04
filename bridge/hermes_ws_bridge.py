@@ -222,7 +222,7 @@ class HermesWsBridge:
             })
         # Synthetic "System" member: everything that isn't a named household
         # member (legacy NULL-user sessions + any unnamed user_id). Lets the
-        # picker expose a third button for non-James/non-Abi sessions.
+        # picker expose a third button for non-roster (system) sessions.
         named_ids = set(self._roster_names.keys())
         sys_count = db._conn.execute(
             "SELECT COUNT(*) FROM sessions WHERE source != 'cron' AND "

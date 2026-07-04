@@ -85,7 +85,7 @@ deltas, then a final `message.new` carries the committed message.
 { "op": "update", "kind": "stream.delta", "peerId": 12345, "msgId": 2002, "text": "Mor" }
 { "op": "update", "kind": "stream.delta", "peerId": 12345, "msgId": 2002, "text": "ning" }
 { "op": "update", "kind": "message.new",  "peerId": 12345,
-    "message": { "id": 2002, "peerId": 12345, "fromId": 12345, "text": "Morning, James.", "date": 1717481005 } }
+    "message": { "id": 2002, "peerId": 12345, "fromId": 12345, "text": "Morning, Alice.", "date": 1717481005 } }
 { "op": "update", "kind": "typing",       "peerId": 12345, "typing": false }
 ```
 
