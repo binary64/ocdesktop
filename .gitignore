@@ -84,3 +84,4 @@ qa_out/
 qa10.sh
 shot*.png
 run_*.log
+/Telegram/.sentry-dsn
