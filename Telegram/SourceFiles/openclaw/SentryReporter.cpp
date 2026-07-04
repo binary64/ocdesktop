@@ -17,6 +17,7 @@ https://github.com/binary64/ocdesktop/blob/main/LICENSE
 #include <QJsonDocument>
 #include <QMutex>
 #include <QSysInfo>
+#include <QUrl>
 
 namespace OpenClaw::Sentry {
 namespace {
@@ -32,22 +33,25 @@ QMutex CrumbMutex;
 QJsonArray Crumbs;
 constexpr int kMaxCrumbs = 30;
 
-QString publicKey() {
-	return QStringLiteral("redacted") + QStringLiteral("redacted");
-}
+QString DsnString;
 
-QString projectId() {
-	return QStringLiteral("0");
-}
-
-QString ingestHost() {
-	return QStringLiteral("redacted.ingest.example.com");
-}
-
-QString dsn() {
-	return QStringLiteral("https://") + publicKey()
-		+ QStringLiteral("@") + ingestHost()
-		+ QStringLiteral("/") + projectId();
+// The DSN is never committed to the repo. It is resolved at init() from,
+// in priority order:
+//   1. the OCDESKTOP_SENTRY_DSN environment variable at runtime, or
+//   2. a compile-time OCDESKTOP_SENTRY_DSN define (the build reads it from
+//      the environment / a gitignored .env at configure time — see
+//      Telegram/CMakeLists.txt).
+// When neither is present the reporter simply stays disabled.
+QString resolveDsn() {
+	auto fromEnv = qEnvironmentVariable("OCDESKTOP_SENTRY_DSN");
+	if (!fromEnv.isEmpty()) {
+		return fromEnv;
+	}
+#ifdef OCDESKTOP_SENTRY_DSN
+	return QStringLiteral(OCDESKTOP_SENTRY_DSN);
+#else
+	return QString();
+#endif
 }
 
 QString nowIso() {
@@ -67,7 +71,7 @@ void post(const QJsonObject &event) {
 	QJsonObject header;
 	header["event_id"] = eventId;
 	header["sent_at"] = nowIso();
-	header["dsn"] = dsn();
+	header["dsn"] = DsnString;
 
 	QJsonObject itemHeader;
 	itemHeader["type"] = QStringLiteral("event");
@@ -143,11 +147,25 @@ void init(const QString &release, const QString &environment) {
 	if (Enabled) {
 		return;
 	}
+	DsnString = resolveDsn();
+	if (DsnString.isEmpty()) {
+		return; // No DSN configured — reporter stays disabled.
+	}
+
+	// DSN format: https://<publicKey>@<ingestHost>/<projectId>
+	const QUrl parsed(DsnString);
+	const auto key = parsed.userName();
+	const auto host = parsed.host();
+	const auto project = parsed.path().mid(1);
+	if (key.isEmpty() || host.isEmpty() || project.isEmpty()) {
+		return; // Malformed DSN — stay disabled rather than post garbage.
+	}
+
 	Release = release;
 	Environment = environment;
-	IngestUrl = QStringLiteral("https://") + ingestHost()
-		+ QStringLiteral("/api/") + projectId()
-		+ QStringLiteral("/envelope/?sentry_key=") + publicKey()
+	IngestUrl = QStringLiteral("https://") + host
+		+ QStringLiteral("/api/") + project
+		+ QStringLiteral("/envelope/?sentry_key=") + key
 		+ QStringLiteral("&sentry_version=7");
 
 	Manager = new QNetworkAccessManager();
