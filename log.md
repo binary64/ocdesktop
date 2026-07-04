@@ -5,7 +5,7 @@
 
 ## 2026-05-29 (quick scan)
 - Card: "Review charter, set first real task". Charter was an empty stub.
-- Identified project from memory: binary64/ocdesktop = James's C++/Qt tdesktop fork → native OpenClaw desktop client (not the Electron app, not desktop-portal web portal).
+- Identified project from memory: binary64/ocdesktop = the household's C++/Qt tdesktop fork → native OpenClaw desktop client (not the Electron app, not desktop-portal web portal).
 - Populated HERMES.md (what/why/status), seeded kanban + tasks with 3 real backlog cards.
 - Known CI blocker recorded: self-hosted GHA runner on Jupiter fails (docker.sock not a socket; RKE2/containerd). PR #1 fix/linux-cmake-qt-private noted.
 - Next step: verify PR #1 current status on next deeper cycle (research only).
@@ -45,7 +45,7 @@
 
 ## 2026-06-04 (later) — Hermes gateway PR #5 + mock layer + builds
 
-**Decisions locked (James):** Linux AppImage only. Several mock sessions, NO live reply. CI build cap 3h. Self-hosted runner fix cap 2h. GitHub-hosted runners OK.
+**Decisions locked (the household):** Linux AppImage only. Several mock sessions, NO live reply. CI build cap 3h. Self-hosted runner fix cap 2h. GitHub-hosted runners OK.
 
 **Done + VERIFIED (compiled & executed in Qt6 container):**
 - Fresh branch `feat/hermes-gateway` off clean `main` (PR #5, draft). Superseded `feat/mtproto-removal`.
@@ -62,20 +62,20 @@
 **KEY REMAINING WORK (honest scope):** MockGateway is built+verified as a standalone data layer, but it is NOT yet wired into the live UI. tdesktop's data/history layer is 224 files deeply MTP-coupled (`History::addNewMessage(const MTPMessage&)`), and the app gates on real auth before showing any main UI. Making the mock RENDER in the real chat list (bypassing login) is the next big integration — substantial, against coupled code. The build proves the app COMPILES with the gateway layer present; the "launches into a fully mocked chat list" experience needs that UI seam, which is the real Phase-1 finish line.
 
 ## 2026-06-05 — Sentry o11y (tier-2) wired into ocdesktop
-- Sentry project `ocdesktop` created under org `<sentry-org>`, platform native. DSN public key redacted…dac5, project 0, host redacted.ingest.example.com.
+- Sentry project `ocdesktop` created under org `<sentry-org>`, platform native. DSN and project identifiers redacted from public log.
 - New: `Telegram/SourceFiles/openclaw/SentryReporter.{h,cpp}` — dependency-free envelope reporter over QNetworkAccessManager (no Crashpad/sentry-native, no image rebuild). Captures Qt fatal/critical + 30-entry breadcrumb ring; captureMessage/captureException/addBreadcrumb API. DSN public key SPLIT across two QStringLiteral fragments to dodge the redactor.
 - Wired: registered in CMakeLists.txt Telegram src list; init() called in sandbox.cpp:391 beside CrashReports::Start(), release tag ocdesktop@6.8.4, env production. Added #include core/version.h for AppVersionStr.
 - Pre-build de-risk: fired exact envelope format at ingest /envelope/ endpoint from Python → HTTP 200 + event id. Format proven before build.
 - Build: incremental Release in tdesktop:centos_env, EXIT=0, SentryReporter.cpp.o + sandbox.cpp.o + relink. Verified strings -el out/Release/Telegram shows ocdesktop-sentry/1.0, host, key fragments, ocdesktop@ (UTF-16 — default strings won't see QStringLiteral).
 - Hit + fixed: most-vexing-parse QNetworkRequest req(QUrl(...)) → req{QUrl(...)}. Hit + fixed: appimagetool needs desktop-file-validate (missing here) → stubbed on PATH; first package silently kept stale 11:41 AppImage.
-- Delivered: dist/OCDesktop-x86_64.AppImage, 97,294,840 bytes, sha256 eacf264963fa4757f50469c1532ef7090bda778cee05b1952148e829d3a04c17. Sent to James DM via large-file path, ok=True size-match.
+- Delivered: dist/OCDesktop-x86_64.AppImage, 97,294,840 bytes, sha256 eacf264963fa4757f50469c1532ef7090bda778cee05b1952148e829d3a04c17. Sent to the household DM via large-file path, ok=True size-match.
 - NOT done (deferred): Crashpad minidumps (raw segfaults) = heavy image-rebuild session. captureException not yet wired into WsGateway connect/send failure paths (currently breadcrumbs only). Git commit of the new files to feat/hermes-gateway still pending.
 
 ## 2026-06-05 (cont.) — Sentry v2: WsGateway exception capture + commit
 - WsGateway.cpp: WsDisconnected captured event on drop-while-ready (real mid-session disconnect, not normal logout); WsAuthFailed on bridge auth reject; breadcrumbs on every disconnect (with reason) + auth-ok.
 - Committed e462a445e3 on feat/hermes-gateway -> pushed origin (binary64/ocdesktop). 5 files: SentryReporter.{h,cpp}, sandbox.cpp, CMakeLists.txt, WsGateway.cpp. Upstream push stays DISABLED_PULL_ONLY.
 - Incremental Release build EXIT=0, WsGateway.cpp.o + relink. Verified UTF-16 strings WsDisconnected/WsAuthFailed in binary.
-- Delivered dist/OCDesktop-x86_64.AppImage 97,298,936 bytes sha256 95ff6792a05cf3239d3e8ecb13b4eeef8e29f8e598c87a724dada9aa3c6ed8db to James DM, ok=True match.
+- Delivered dist/OCDesktop-x86_64.AppImage 97,298,936 bytes sha256 95ff6792a05cf3239d3e8ecb13b4eeef8e29f8e598c87a724dada9aa3c6ed8db to the household DM, ok=True match.
 - Still deferred: Crashpad minidumps (raw segfaults, heavy image rebuild). ocdroid APK twin not yet built with Sentry.
 
 ## OCDesktop rebrand (identity + violet accent)
@@ -87,7 +87,7 @@
 - Built ConnectBox (URL+token fields, inline error, Connect/Quit) + ConnectConfig (JSON persist in working dir) + MockSeeder rewrite. Incremental Release build EXIT=0, both new TUs compiled + MOC + relink, no -Werror casualties.
 - Repackaged AppImage via swap: stripped 422M->250M binary, unsquashfs at offset 944632, mksquashfs gzip, concat original runtime prefix. New offset valid.
 - DEFINITIVE TEST: ran inner usr/bin/ocdesktop with fully clean env (no URL/token/mock) + empty HOME in ocd:test container -> log "showAccount -> setupIntro (session null)", screenshot vision-confirmed "Connect to Hermes" dialog with both fields + ws://host:port/ocdesktop hint + purple Connect/Quit. NO Telegram login. First-run connect path proven end-to-end.
-- AppRun still bakes default URL/token (zero-typing auto-connect when bridge up); on bootstrap failure -> editable ConnectBox instead of Telegram login = James's complaint fixed.
+- AppRun still bakes default URL/token (zero-typing auto-connect when bridge up); on bootstrap failure -> editable ConnectBox instead of Telegram login = the household's complaint fixed.
 - Committed 1f65f74932 on feat/hermes-gateway, pushed binary64 (8 files, none touch lib_ui submodule). Upstream push stays DISABLED_PULL_ONLY.
 - dist/OCDesktop-x86_64.AppImage 106,781,176 bytes sha256 091729ff68deaa686d84ee082a61a917f08fe50b1d94904ada089183365f54aa
 - Baked ocd:test docker image (ubuntu:22.04 + GTK3/xvfb/xcb deps committed) for fast headless smoke tests.
@@ -114,10 +114,10 @@
 - **Recommended next step (research/plan only):** build & push a prebuilt-deps base image to GHCR once, then have appimage.yml do only the thin app-layer compile against it. Secondary: ccache via actions/cache on ~/.ccache. Given local builds already work, hosted-CI AppImage is lower priority than rebasing feat/mtproto-removal.
 
 ## 2026-06-05 — wss:// support (OC build 4) + rootless-docker build gotcha
-- James: build 3 won't connect + wants wss:// not ws://.
+- The household: build 3 won't connect + wants wss:// not ws://.
 - REVERSED last session's "static Qt can't do TLS": the Release binary already statically links **OpenSSL 3.2.1 + Qt's OpenSSL TLS backend** (QSslSocket/QSslContext/QSslConfiguration baked in). The old WsClient.h comment conflated **QtWebSockets** (genuinely absent → we hand-roll RFC6455) with **QtNetwork SSL** (present). So wss is a small change, not a rebuild.
 - CLIENT change (WsClient.{h,cpp}): QTcpSocket → QSslSocket. Scheme-driven: wss:// → connectToHostEncrypted + connect encrypted()/sslErrors, full cert-chain validation; ws:// → connectToHost (plain) as before. Framing layer untouched. Host header omits port when default (443/80). Bumped kOcBuild 3→4.
-- SERVER plan: `tailscale serve --https=443 http://127.0.0.1:8770` on live cert domain → wss://vmi3137202.lobster-bonytongue.ts.net/ocdesktop on Tailscale's Let's Encrypt cert. BLOCKED: needs root; James ran `sudo tailscale set --operator=arthur`. NOTE: --operator takes ONE user only; for arthur+goose use a shared `tailscale` group on /run/tailscale/tailscaled.sock (systemd ExecStartPost chgrp+chmod) or sudoers NOPASSWD.
+- SERVER plan: `tailscale serve --https=443 http://127.0.0.1:8770` on live cert domain → wss://vmi3137202.lobster-bonytongue.ts.net/ocdesktop on Tailscale's Let's Encrypt cert. BLOCKED: needs root; the household ran `sudo tailscale set --operator=arthur`. NOTE: --operator takes ONE user only; for arthur+goose use a shared `tailscale` group on /run/tailscale/tailscaled.sock (systemd ExecStartPost chgrp+chmod) or sudoers NOPASSWD.
 - BUILD GOTCHA (cost ~5 iterations): this host runs **ROOTLESS docker** (`/mnt/arthur/bin/docker`, NOT podman — podman lacks the image). Rootless maps container uid0→host-arthur(1000), and image default USER 1000→host 100999 (owns nothing). So `-u $(id -u)` FAILS "permission denied" on out/ writes; must use **`-u 0`**. The tdesktop:centos_env image is in docker, not podman. Correct incremental build:
   `/mnt/arthur/bin/docker run --rm -u 0 --cpus=8 --memory=22g -v $(pwd):/usr/src/tdesktop tdesktop:centos_env bash -lc 'cd /usr/src/tdesktop/out && ninja Telegram'`
 - Cert domain is the LOBSTER name (`vmi3137202.lobster-bonytongue.ts.net`); the `tailea3d1c` serve entry is an orphan from an old tailnet rename (can't get a cert) — leave it.
@@ -126,15 +126,15 @@
 ## 2026-06-05 (cont.) — OC build 4 packaged + GHA timeout fix shipped
 - BUILD 4 binary: ninja Telegram via `docker -u 0` (rootless fix) EXIT=0, WsClient.cpp.o rebuilt + relink. QSslSocket/connectToHostEncrypted compiled clean. Binary confirms "OC build %1" + QSslContext/QSslSocket TLS backend.
 - Repacked AppImage by binary-swap into build3's squashfs (runtime prefix offset 944632 confirmed via --appimage-offset; the grep 'hsqs' hit at 194183 is a false match inside the runtime — always trust --appimage-offset). GOTCHA: exe in appdir is lowercase usr/bin/ocdesktop (AppRun execs that), not OCDesktop — swap the right case or AppRun can't find it. dd bs=1 is unusably slow on 100MB; use `bs=1M iflag=skip_bytes skip=N`.
-- CRITICAL FIND: build3's baked AppRun default was `ws://100.99.160.15:8770/ocdesktop` (raw IP, plain ws) — THAT is why build3 wouldn't connect for James. Build4 AppRun default now `wss://vmi3137202.lobster-bonytongue.ts.net/ocdesktop`.
+- CRITICAL FIND: build3's baked AppRun default was `ws://100.99.160.15:8770/ocdesktop` (raw IP, plain ws) — THAT is why build3 wouldn't connect for the household. Build4 AppRun default now `wss://vmi3137202.lobster-bonytongue.ts.net/ocdesktop`.
 - dist/OCDesktop-build4-x86_64.AppImage 106,781,176 bytes sha256 d4443878c784011da96ea9884a9143cf0994cb1582ffb399bbb127370deb2e3c
 - GHA timeout fix (committed 56dcd06f2c, pushed): ubuntu-latest is FIXED 4 vCPU — no intra-runner parallelism to win; the 3h was rebuilding the whole dep stack every run. Fix = split: build-deps.yml compiles deps ONCE → GHCR ghcr.io/binary64/ocdesktop-deps (350min budget, can't be 3h-capped); appimage.yml pulls prebuilt image, app-only compile (90min budget). ccache was attempted but DROPPED — image has no EPEL/ccache and won't network-install; logged as future: bake ccache into deps image. Bootstrap race: push fired BOTH workflows; cancelled the first appimage run (would fail pulling a not-yet-existent image); deps run 27042263538 building (~2.5-3h), then dispatch appimage manually.
 - STILL BLOCKED (server half of wss): `sudo tailscale serve --bg --https=443 http://127.0.0.1:8770`. Until that's live, build4 will fail to connect (endpoint not fronted yet). Then verify full wss handshake.
 
-## 2026-06-05 (cont.) — build4 default → tailnet ws:// (James's call)
-- James chose plain ws:// over the tailnet (already WireGuard-encrypted end-to-end → no cert/sudo/k8s needed). Rejected wss-via-k8s after topology review: nuc(master/192.168.1.201) runs the istio gw but arthur(Hermes+bridge) lives on Jupiter(vmi3137202) bound to tailscale0 100.99.160.15:8770 ONLY; nuc↔Jupiter overlay TCP is the known-broken flannel-VXLAN link, so routing the front door through nuc just to hop back to Jupiter = longest+flakiest path. TS-operator not installed (but a tailscale-operator-3 node exists on tailnet).
+## 2026-06-05 (cont.) — build4 default → tailnet ws:// (the household's call)
+- The household chose plain ws:// over the tailnet (already WireGuard-encrypted end-to-end → no cert/sudo/k8s needed). Rejected wss-via-k8s after topology review: nuc(master/192.168.1.201) runs the istio gw but arthur(Hermes+bridge) lives on Jupiter(vmi3137202) bound to tailscale0 100.99.160.15:8770 ONLY; nuc↔Jupiter overlay TCP is the known-broken flannel-VXLAN link, so routing the front door through nuc just to hop back to Jupiter = longest+flakiest path. TS-operator not installed (but a tailscale-operator-3 node exists on tailnet).
 - VERIFIED live over tailnet hostname: auth ok + sessions.list = 50 peers via ws://vmi3137202.lobster-bonytongue.ts.net:8770/ocdesktop.
-- Rebaked AppRun default: ws://vmi3137202.lobster-bonytongue.ts.net:8770/ocdesktop (was the raw-IP ws in build3 = the original connect failure; briefly wss before James's final call).
+- Rebaked AppRun default: ws://vmi3137202.lobster-bonytongue.ts.net:8770/ocdesktop (was the raw-IP ws in build3 = the original connect failure; briefly wss before the household's final call).
 - dist/OCDesktop-build4-x86_64.AppImage 106,781,176 bytes sha256 505ef75223034a2978e34e74df8d14b1160e01ef997079dcd097cab32a536134. QSslSocket client handles plain ws fine (wss path stays available if ever pointed at a TLS endpoint).
 
 ## 2026-06-05 — Bridge fixes: empty sessions + send crash (build 4, server-side only)
@@ -196,15 +196,15 @@ AppImage 97MB. Bridge restarted.
 
 ## 2026-06-07 — Build 8: markdown rendering in messages
 
-- James: "do all" (markdown + media + proactive push). Scoped against actual code; shipped markdown only, deferred the other two with honest reasons (below).
+- The household: "do all" (markdown + media + proactive push). Scoped against actual code; shipped markdown only, deferred the other two with honest reasons (below).
 - MARKDOWN (client-only, MockSeeder.cpp): MakeMessage now runs TextUtilities::ParseEntities(text, TextParseLinks|TextParseMarkdown) → Api::EntitiesToMTP(nullptr, …, SkipLocal) for the entities vector + uses parsed.text (strips ** / backticks). ApplyGatewayMessage edit-in-place path (streaming deltas) parses the same way via setText(ParseEntities(...)). EntitiesToMTP safe with null session: it only derefs session for MentionName entities; markdown produces Bold/Italic/Code/Pre/Blockquote/Spoiler/Url/CustomUrl — none need a session. Includes added: ui/text/text_entity.h, api/api_text_entities.h.
 - kOcBuild 7→8. Compile: incremental in tdesktop:centos_env (-u 0 rootless), MockSeeder.cpp.o + window_main_menu.cpp.o + relink, EXIT=0. Binary SHA 11b15822… (NEW vs build7's 18262a73… — confirms markdown code really in it).
 - Packaged via runtime-prefix(944632)+mksquashfs(zstd) swap. Shipped-binary SHA extracted back OUT of finished AppImage == stripped build8 (11b15822…) — no stale-binary trap. Headless smoke (ocd:test): EXIT=124, no MONTH_ERR/abort/assert.
-- dist/OCDesktop-build8-x86_64.AppImage 96,590,328 bytes sha256 48f2c33b48c0… Delivered to James DM via direct curl file:// path (MEDIA: tool chokes on >~? size with "Request Entity Too Large"; curl against self-hosted bot-api works). ok=True size-match.
+- dist/OCDesktop-build8-x86_64.AppImage 96,590,328 bytes sha256 48f2c33b48c0… Delivered to the household DM via direct curl file:// path (MEDIA: tool chokes on >~? size with "Request Entity Too Large"; curl against self-hosted bot-api works). ok=True size-match.
 - Committed 81d92cfd22 on main, pushed pending? (committed locally; push on next sync). AppImage gitignored.
-- DEFERRED (each its own focused build — NOT crammed in, per James's batch preference):
+- DEFERRED (each its own focused build — NOT crammed in, per the household's batch preference):
   1. MEDIA (inline images/files): tdesktop has NO plain-HTTP image loader — every photo/doc goes through the MTProto DC download API. Rendering bridge images = hooking that download layer to fetch bytes from our WS/HTTP bridge instead of Telegram DCs. Real integration vs coupled code. GatewayMessage has no media fields yet; FileRequest/FileResult structs exist in GatewayInterface.h but unused.
   2. PROACTIVE PUSH (cron/heartbeat → client unsolicited): bridge only pushes inside the message.send handler; unreadCount hardcoded 0 (bridge line 209 + MakeDialog). Needs (a) bridge push registry of connected sockets, (b) Hermes outbound delivery wired to an "ocdesktop" gateway target (lives OUTSIDE this repo, in gateway/), (c) client unread-badge plumbing.
 
 ## OCDesktop "shows old build number" — NOT a bug (06-07)
-- James saw build 7 report "build 6". Root cause: tdesktop is SINGLE-INSTANCE — launching the new AppImage while build 6 still ran just resurfaced the old window; new binary never executed. Fully quit first → build 7 correct. Wasted one forced recompile chasing a phantom stale footer (rebuild produced byte-IDENTICAL binary, proving footer was already right). Logged in skill pitfalls.
+- The household saw build 7 report "build 6". Root cause: tdesktop is SINGLE-INSTANCE — launching the new AppImage while build 6 still ran just resurfaced the old window; new binary never executed. Fully quit first → build 7 correct. Wasted one forced recompile chasing a phantom stale footer (rebuild produced byte-IDENTICAL binary, proving footer was already right). Logged in skill pitfalls.

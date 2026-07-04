@@ -16,7 +16,7 @@ KEY SEAM LESSON (cost the QA loop): intercepting the two TopBar click paths
   in mainwidget.cpp. QA proof line: LOG "thirdSectionForCurrentMainSection -> browser".
 HEADLESS LIMIT (expected, not a bug): webkit2gtk paints blank in Xvfb (no GPU);
   URL bar + section instantiation + column swap DO render → that's the QA proof.
-  Real paint only verifiable on James's display.
+  Real paint only verifiable on the household's display.
 BUILD: incremental relink via ./ocbuild.sh (docker tdesktop:centos_env, -u 0,
   mount repo at /usr/src/tdesktop, `cmake --build out --target Telegram`).
   Adding new TUs triggers a one-time CMake reconfigure; after that it's ~3 TUs+link.
@@ -32,11 +32,11 @@ FIX/RULE: after every `ninja Telegram`, BEFORE signing:
   4. VERIFY EMBEDDED: extract usr/bin/ocdesktop back out of finished AppImage,
      sha256 must match the freshly-stripped binary. NEVER trust the AppDir blindly.
 
-## SHIP GATE (standing rule from James, 2026-06-07)
+## SHIP GATE (standing rule from the household, 2026-06-07)
 QA the full REAL path yourself before sending any AppImage — headless drive,
 wait for the picker, click the actual button, verify seed logs + screenshots +
-app-still-alive. Only send when QA passes. James accepts skipped build numbers:
-a number he never receives = a build that failed QA and was rebuilt, not shipped.
+app-still-alive. Only send when QA passes. The household accepts skipped build numbers:
+a number they never receive = a build that failed QA and was rebuilt, not shipped.
 Never ship on assumption (build 10 shipped a crash because QA bypassed the click
 path via an env-var shortcut — don't repeat that).
 
@@ -62,10 +62,10 @@ THIS PUSH RAIL is what the browser-control tool (next build) rides on: a new
 update kind pushed the same way → client acts on it.
 VERIFIED end-to-end: append_message() out-of-band into a live session → ws client
 got message.new in <2s, correct peer (test harness in session, message deleted
-after). Picker renders James/Abi/System on the real build-13 binary; System seeds
+after). Picker renders householder A/householder B/System on the real build-13 binary; System seeds
 50 dialogs/235 msgs (env-pinned OCDESKTOP_HERMES_USER=system path; headless click
 on the 3rd modal button wouldn't land under matchbox — coordinate drift, not a
-bug. The James-click callback path was already proven in build 12 QA).
+bug. The householder-A-click callback path was already proven in build 12 QA).
 Shipped build13 AppImage sha 4d911846..., embedded binary 27efffb9... verified ==.
 STALE-BINARY TRAP RECURRED: appimagetool packed the OLD build-12 binary still in
 squashfs-root (sha 24684ee3) on first roll — caught by verify-back (mismatch vs
@@ -73,15 +73,15 @@ fresh 27efffb9), re-copied fresh binary, re-rolled, re-verified ==. ALWAYS cp th
 fresh stripped binary into squashfs-root/usr/bin/ocdesktop BEFORE packing.
 
 ## NEXT BUILD (planned, build 14) — embedded browser trio
-James wants: (1) replace the right-panel Info section with an embedded web
+The household wants: (1) replace the right-panel Info section with an embedded web
 browser, (2) a Hermes tool/MCP to control it (navigate URL), (3) on convo first
 load, scan history for the last URL set and reload it.
 FEASIBILITY (checked): tdesktop ships its OWN webview — Telegram/lib_webview,
 Webview::Window (webview_embed.h) with .navigate(url)/.reload()/.eval(). Uses
 webkit2gtk on Linux → NEEDS A REAL DISPLAY; returns "Could not initialize WebView"
 under headless Xvfb. So the rendered page CANNOT be self-QA'd headless — only the
-panel swap + navigate-command flow are headless-testable; James must eyeball the
-actual render on his box. Build it to degrade gracefully (fallback label, not a
+panel swap + navigate-command flow are headless-testable; the household must eyeball the
+actual render on their box. Build it to degrade gracefully (fallback label, not a
 crash) if webkit is missing.
 ARCH: navigate commands come down the SAME push channel as message.new — add a
 new update kind (e.g. "browser.navigate") the client routes to the webview.
@@ -100,12 +100,12 @@ fetches it before showing the picker and passes the list to UserPickerBox(member
 ...). KnownUsers() kept ONLY as offline fallback when the fetch fails/returns empty.
 Adding a 3rd member = one OCDESKTOP_ROSTER env line + restart ocdesktop-ws, NO
 client rebuild. Bridge change is hot (service runs from repo file).
-QA'd headless: "fetched 2 roster members from bridge" → picker James/Abi → click
-seeded user 0000000001 clean (docs/build12-*.png). Shipped build12 AppImage
+QA'd headless: "fetched 2 roster members from bridge" → picker householder A/householder B → click
+seeded user (household member A id) clean (docs/build12-*.png). Shipped build12 AppImage
 sha d3e0e3e7..., embedded binary sha 24684ee3... verified ==.
 
-## 2026-06-07 — build 11: click-James crash (use-after-free in picker callback)
-SYMPTOM: clicking James/Abi in the picker did "nothing" — app crashed (SIGSEGV)
+## 2026-06-07 — build 11: click-householder-A crash (use-after-free in picker callback)
+SYMPTOM: clicking householder A/householder B in the picker did "nothing" — app crashed (SIGSEGV)
   or fell back to the stock Telegram intro screen. Reproduced headless: click →
   seed runs → segfault → black screen.
 CAUSE: UserPickerBox click callback ran `chosen(id)` (synchronous seed of 50
@@ -128,4 +128,4 @@ QA HARNESS PITFALLS (cost hours):
     ~5-20s). Clicking too early hits the intro's "Start Messaging" button instead.
   - WS bridge binds ONLY to the tailnet IP (100.99.160.15:8770), not 127.0.0.1.
   - Container needs wmctrl+xdotool+imagemagick (baked into ocd:test2 image).
-  - James button center = (640,473) at 1280x900 with matchbox WM (win 818x642@231,118).
+  - Householder A button center = (640,473) at 1280x900 with matchbox WM (win 818x642@231,118).

@@ -30,19 +30,26 @@ struct ConnectConfig {
 	}
 };
 
-// The two household members served by the shared bridge. The id is the
-// Hermes user_id (Telegram sender id) the bridge filters sessions on; the
-// label is what the picker shows. Kept here so the picker, the gateway auth
-// frame, and the menu "switch user" entry all agree on one source of truth.
+// A household member served by the shared bridge. The id is the Hermes
+// user_id (Telegram sender id) the bridge filters sessions on; the label is
+// what the picker shows. The REAL roster (who the members are, and their
+// display names) is resolved at runtime from the bridge's `roster` op
+// (see hermes_ws_bridge.py roster(), driven by the OCDESKTOP_ROSTER env var
+// on the bridge host — "id:Name,id:Name" — falling back to the raw id when
+// unset). Nothing about who the members are is hardcoded in this header;
+// KnownUsers() below is ONLY the offline fallback used when the bridge
+// can't be reached to fetch a live roster.
 struct KnownUser {
 	QString id;
 	QString label;
 };
 
+// Offline fallback roster, used only when a live fetchRosterBlocking() call
+// to the bridge fails or returns empty (e.g. no bridge reachable yet). Real
+// member ids/names always come from the bridge at runtime; do not add real
+// identifying names here — keep this generic so the header carries no PII.
 [[nodiscard]] inline std::vector<KnownUser> KnownUsers() {
 	return {
-		{ u"0000000001"_q, u"James"_q },
-		{ u"0000000002"_q, u"Abi"_q },
 		{ u"system"_q, u"System"_q },
 	};
 }
