@@ -3,7 +3,7 @@
 > Project charter. Seeded 2026-05-29; populated from memory 2026-05-29.
 
 ## What
-James's fork of Telegram Desktop (tdesktop) — a native **C++/Qt** desktop client for
+The household's fork of Telegram Desktop (tdesktop) — a native **C++/Qt** desktop client for
 the OpenClaw Gateway. Repo: [`binary64/ocdesktop`](https://github.com/binary64/ocdesktop)
 (public since 2026-03-24, for unlimited GHA minutes). NOT the old Electron app
 (`clawd-telegram-electron`, archived) and NOT `desktop-portal` (the web portal that

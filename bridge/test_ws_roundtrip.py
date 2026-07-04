@@ -28,9 +28,9 @@ async def run():
     def fake_create_agent(session_id, stream_delta_callback):
         class _Stub:
             def run_conversation(self, user_message, task_id=None):
-                for chunk in ["Hello", ", ", "James", "."]:
+                for chunk in ["Hello", ", ", "Alice", "."]:
                     stream_delta_callback(chunk)
-                return {"final_response": "Hello, James."}
+                return {"final_response": "Hello, Alice."}
         return _Stub()
     bridge._create_agent = fake_create_agent
 
@@ -100,7 +100,7 @@ async def run():
         results["bad_auth_rejected"] and results["auth_ok"] and results["unauthed_blocked"]
         and results["protocol"] == 1 and results["self_id"] == 1
         and results["sessions_count"] > 0 and results["send_ack"]
-        and results["streamed_text"] == "Hello, James." and results["final_text"] == "Hello, James."
+        and results["streamed_text"] == "Hello, Alice." and results["final_text"] == "Hello, Alice."
         and results["final_fromId_is_peer"] and results["unknown_op_handled"]
         and results["frame_sequence"] == [
             "ack", "typing", "stream.start", "stream.delta", "stream.delta",
