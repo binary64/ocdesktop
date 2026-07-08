@@ -24,7 +24,7 @@ These are entirely Telegram-specific with zero UI dependency.
 
 **`mtproto/` directory (entire contents):**
 - `mtproto/details/` — 18 files (sockets, key creation, TLS, RSA, serialization)
-- `mtproto/connection_*.cpp/.h` — 6 files (TCP, HTTP, resolving transports)
+- `mtproto/connection_*.cpp/.h` — 8 files (abstract, TCP, HTTP, resolving transports)
 - `mtproto/mtp_instance.cpp/.h` — MTProto orchestrator
 - `mtproto/session.cpp/.h` — MTProto session management
 - `mtproto/session_private.cpp/.h` — Session internals (largest file: 84KB)
@@ -139,7 +139,7 @@ These files have no direct MTP dependency and form the OCDesktop UI shell:
 
 ## Dependency Graph — Removal Order
 
-```
+```text
 td_scheme (TL schema codegen)
     ↑
 td_mtproto (protocol implementation)
@@ -165,6 +165,7 @@ history, dialogs, info, ui (pure UI)
 The UI layer references these MTP types extensively. We need stub headers that provide the same type names but empty implementations:
 
 ### `mtproto/mtp_instance.h` (stub)
+
 ```cpp
 namespace MTP {
 class Instance {
@@ -176,6 +177,7 @@ public:
 ```
 
 ### `mtproto/sender.h` (stub)
+
 ```cpp
 namespace MTP {
 class Sender {
@@ -186,12 +188,14 @@ public:
 ```
 
 ### `mtproto/core_types.h` (stub)
+
 ```cpp
 using mtpRequestId = int;
 // Minimal type definitions
 ```
 
 ### `mtproto/mtproto_auth_key.h` (stub)
+
 ```cpp
 namespace MTP {
 class AuthKey {
@@ -208,9 +212,9 @@ public:
 - `MTP::Config` — used in startup flow
 - `MTP::ProxyData` — used in connection settings
 - `MTP::AuthKey` — used in account storage
-- `MTP::DcId` — type alias used in statistics
+- `MTP::DcId` — type alias used in statistics (defined alongside the `mtproto/core_types.h` stub)
 - `mtpRequestId` — used as request tracking ID everywhere
-- `MTP::Environment` — enum used in config
+- `MTP::Environment` — enum used in config (defined alongside the `mtproto/mtproto_config.h` stub)
 
 ## Estimated Effort
 
@@ -247,6 +251,7 @@ mtproto/mtproto_proxy_data.cpp            (keep .h as stub)
 mtproto/mtproto_response.cpp              (keep .h as stub)
 mtproto/mtproto_auth_key.cpp              (keep .h as stub)
 mtproto/dedicated_file_loader.cpp         (keep .h as stub)
+mtproto/facade.cpp                        (keep .h as stub)
 codegen/scheme/codegen_scheme.py
 ```
 
