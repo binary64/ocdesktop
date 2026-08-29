@@ -16,8 +16,16 @@ These are enabled and matter here:
 - `master_updater.yml` — Master branch updater.
 - `stale.yml` — Close stale issues and PRs
 
-GitHub also lists the built-in `Dependabot Updates` workflow, which has no file in this
-directory.
+GitHub reports two further active workflows that have no file in this directory on `main`:
+
+- `Dependabot Updates` — infrastructure-generated (`dynamic/dependabot/dependabot-updates`);
+  it has no checked-in workflow file anywhere in the repo.
+- `OCDesktop Build` (`.github/workflows/ocdesktop.yml`) — registered as active, but the
+  file exists only on the feature branches `feat/gateway-integration` and
+  `fix/linux-cmake-qt-private`, not on `main`. It therefore does not run for `main`.
+
+That is the complete active/disabled inventory GitHub reports for this repo; nothing is
+omitted.
 
 ### 2. Legacy platform/release workflows (present but manually disabled)
 
