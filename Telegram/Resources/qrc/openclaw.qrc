@@ -1,0 +1,6 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <qresource prefix="/openclaw">
+        <file alias="mock.json">../openclaw/mock.json</file>
+    </qresource>
+</RCC>

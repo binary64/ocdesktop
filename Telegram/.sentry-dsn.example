@@ -1,0 +1,3 @@
+# Copy to Telegram/.sentry-dsn (gitignored) or export OCDESKTOP_SENTRY_DSN.
+# Format: https://<publicKey>@<ingestHost>/<projectId>
+https://examplekey@o000000.ingest.us.sentry.io/0000000000000000
