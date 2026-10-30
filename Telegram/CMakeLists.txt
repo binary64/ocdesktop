@@ -2448,6 +2448,25 @@ PRIVATE
     window/themes/window_themes_generate_name.h
     apiwrap.cpp
     apiwrap.h
+    openclaw/GatewayInterface.h
+    openclaw/ConnectBox.cpp
+    openclaw/ConnectBox.h
+    openclaw/ConnectConfig.cpp
+    openclaw/ConnectConfig.h
+    openclaw/UserPickerBox.cpp
+    openclaw/UserPickerBox.h
+    openclaw/MockGateway.cpp
+    openclaw/MockGateway.h
+    openclaw/MockSeeder.cpp
+    openclaw/MockSeeder.h
+    openclaw/SentryReporter.cpp
+    openclaw/SentryReporter.h
+    openclaw/WsClient.cpp
+    openclaw/WsClient.h
+    openclaw/WsGateway.cpp
+    openclaw/WsGateway.h
+    openclaw/BrowserSection.cpp
+    openclaw/BrowserSection.h
     config.h
     logs.cpp
     logs.h
@@ -2508,6 +2527,7 @@ PRIVATE
     qrc/telegram/picker.qrc
     qrc/telegram/telegram.qrc
     qrc/telegram/sounds.qrc
+    qrc/openclaw.qrc
     winrc/Telegram.rc
     winrc/Telegram.manifest
     langs/lang.strings
@@ -2731,6 +2751,22 @@ PRIVATE
     TDESKTOP_API_HASH=${TDESKTOP_API_HASH}
     G_LOG_DOMAIN="Telegram"
 )
+
+# Optional baked-in Sentry DSN. Never committed: read at configure time from
+# the OCDESKTOP_SENTRY_DSN environment variable, or from a gitignored
+# Telegram/.sentry-dsn file. Runtime env var of the same name overrides both
+# (see openclaw/SentryReporter.cpp). Absent = crash reporting disabled.
+if (DEFINED ENV{OCDESKTOP_SENTRY_DSN} AND NOT "$ENV{OCDESKTOP_SENTRY_DSN}" STREQUAL "")
+    set(ocdesktop_sentry_dsn "$ENV{OCDESKTOP_SENTRY_DSN}")
+elseif (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/.sentry-dsn)
+    file(STRINGS ${CMAKE_CURRENT_SOURCE_DIR}/.sentry-dsn ocdesktop_sentry_dsn LIMIT_COUNT 1)
+endif()
+if (DEFINED ocdesktop_sentry_dsn AND NOT "${ocdesktop_sentry_dsn}" STREQUAL "")
+    target_compile_definitions(Telegram
+    PRIVATE
+        OCDESKTOP_SENTRY_DSN="${ocdesktop_sentry_dsn}"
+    )
+endif()
 
 get_property(is_multi_config GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
 if (APPLE

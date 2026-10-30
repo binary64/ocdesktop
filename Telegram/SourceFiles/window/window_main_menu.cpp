@@ -12,6 +12,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "base/qt_signal_producer.h"
 #include "boxes/about_box.h"
 #include "core/update_channel.h"
+#include "openclaw/OcVersion.h"
+#include "openclaw/MockSeeder.h"
 #include "boxes/peer_list_controllers.h"
 #include "boxes/premium_preview_box.h"
 #include "calls/group/calls_group_common.h"
@@ -388,8 +390,8 @@ MainMenu::MainMenu(
 	parentResized();
 
 	_telegram->setMarkedText(tr::link(
-		u"Telegram Desktop"_q,
-		u"https://desktop.telegram.org"_q));
+		OpenClaw::OcAppName(),
+		OpenClaw::OcHomeUrl()));
 	_telegram->setLinksTrusted();
 	// The canary version is too long for the "Version {version}" form.
 	_version->setMarkedText(
@@ -399,7 +401,9 @@ MainMenu::MainMenu(
 				: tr::lng_settings_current_version(
 					tr::now,
 					lt_version,
-					currentVersionShortText()),
+					currentVersionShortText()
+						+ u" \u00b7 "_q
+						+ OpenClaw::OcVersionText()),
 			1) // Link 1.
 		.append(QChar(' '))
 		.append(QChar(8211))
@@ -772,6 +776,13 @@ void MainMenu::setupMenu() {
 		{ &st::menuIconSettings }
 	)->setClickedCallback([=] {
 		controller->showSettings();
+	});
+
+	addAction(
+		rpl::single(u"Switch user"_q),
+		{ &st::menuIconProfile }
+	)->setClickedCallback([=] {
+		OpenClaw::SwitchUser(&controller->session().account());
 	});
 
 	_nightThemeToggle = addAction(
